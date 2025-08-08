@@ -47,13 +47,11 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
 
-    /* Brand & motion tokens */
+    /* Brand tokens */
     --brand: 258 90% 60%;
     --brand-foreground: 0 0% 100%;
     --brand-2: 210 90% 60%;
     --brand-2-foreground: 0 0% 100%;
-    --gradient-primary: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--brand-2)));
-    --shadow-elevate: 0 10px 30px -10px hsl(var(--brand) / 0.35);
     --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
