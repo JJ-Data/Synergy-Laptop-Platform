@@ -14,16 +14,353 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      companies: {
+        Row: {
+          created_at: string
+          domain: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      laptops: {
+        Row: {
+          active: boolean
+          brand: string | null
+          company_id: string
+          cpu: string | null
+          created_at: string
+          id: string
+          image_url: string | null
+          name: string
+          price_cents: number
+          ram_gb: number | null
+          storage_gb: number | null
+        }
+        Insert: {
+          active?: boolean
+          brand?: string | null
+          company_id: string
+          cpu?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          name: string
+          price_cents: number
+          ram_gb?: number | null
+          storage_gb?: number | null
+        }
+        Update: {
+          active?: boolean
+          brand?: string | null
+          company_id?: string
+          cpu?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          name?: string
+          price_cents?: number
+          ram_gb?: number | null
+          storage_gb?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "laptops_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loans: {
+        Row: {
+          company_id: string
+          created_at: string
+          employee_id: string
+          end_date: string
+          id: string
+          interest_rate: number
+          principal_cents: number
+          request_id: string
+          start_date: string
+          status: Database["public"]["Enums"]["loan_status"]
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          employee_id: string
+          end_date: string
+          id?: string
+          interest_rate: number
+          principal_cents: number
+          request_id: string
+          start_date: string
+          status?: Database["public"]["Enums"]["loan_status"]
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          employee_id?: string
+          end_date?: string
+          id?: string
+          interest_rate?: number
+          principal_cents?: number
+          request_id?: string
+          start_date?: string
+          status?: Database["public"]["Enums"]["loan_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loans_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      policies: {
+        Row: {
+          company_id: string
+          durations_months: number[]
+          id: string
+          interest_rate: number
+          max_amount_cents: number
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          durations_months?: number[]
+          id?: string
+          interest_rate: number
+          max_amount_cents: number
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          durations_months?: number[]
+          id?: string
+          interest_rate?: number
+          max_amount_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          company_id: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          company_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          company_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repayments: {
+        Row: {
+          amount_cents: number
+          company_id: string
+          created_at: string
+          due_date: string
+          employee_id: string
+          id: string
+          loan_id: string
+          paid_at: string | null
+          status: Database["public"]["Enums"]["repayment_status"]
+        }
+        Insert: {
+          amount_cents: number
+          company_id: string
+          created_at?: string
+          due_date: string
+          employee_id: string
+          id?: string
+          loan_id: string
+          paid_at?: string | null
+          status?: Database["public"]["Enums"]["repayment_status"]
+        }
+        Update: {
+          amount_cents?: number
+          company_id?: string
+          created_at?: string
+          due_date?: string
+          employee_id?: string
+          id?: string
+          loan_id?: string
+          paid_at?: string | null
+          status?: Database["public"]["Enums"]["repayment_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repayments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "repayments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "loans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      requests: {
+        Row: {
+          company_id: string
+          created_at: string
+          decided_at: string | null
+          duration_months: number
+          employee_id: string
+          id: string
+          laptop_id: string
+          requested_amount_cents: number
+          status: Database["public"]["Enums"]["request_status"]
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          decided_at?: string | null
+          duration_months: number
+          employee_id: string
+          id?: string
+          laptop_id: string
+          requested_amount_cents: number
+          status?: Database["public"]["Enums"]["request_status"]
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          decided_at?: string | null
+          duration_months?: number
+          employee_id?: string
+          id?: string
+          laptop_id?: string
+          requested_amount_cents?: number
+          status?: Database["public"]["Enums"]["request_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requests_laptop_id_fkey"
+            columns: ["laptop_id"]
+            isOneToOne: false
+            referencedRelation: "laptops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _company_id?: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "super_admin" | "admin" | "employee"
+      loan_status: "active" | "paid" | "defaulted"
+      repayment_status: "due" | "paid" | "late"
+      request_status: "pending" | "approved" | "rejected" | "purchased"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +487,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "admin", "employee"],
+      loan_status: ["active", "paid", "defaulted"],
+      repayment_status: ["due", "paid", "late"],
+      request_status: ["pending", "approved", "rejected", "purchased"],
+    },
   },
 } as const
