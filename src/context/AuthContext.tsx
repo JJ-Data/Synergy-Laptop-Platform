@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 export type Role = "super_admin" | "admin" | "employee";
 
@@ -13,45 +14,121 @@ export interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
-  login: (payload: { email: string; role: Role; companyId?: string | null; name?: string }) => void;
-  logout: () => void;
+  login: (email: string, password: string, mode: "signin" | "signup") => Promise<{ error?: string }>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "app_session";
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      // noop
+  // Helper: compute highest role with precedence
+  const computeAuthUser = async (uid: string, email: string): Promise<AuthUser | null> => {
+    // Fetch roles
+    const { data: roles, error: rolesErr } = await supabase
+      .from("user_roles")
+      .select("role, company_id")
+      .eq("user_id", uid);
+
+    if (rolesErr) {
+      console.error("Failed fetching roles", rolesErr);
+      return { id: uid, email, role: "employee" } as AuthUser; // fallback minimal
     }
-  }, []);
 
-  const login: AuthContextValue["login"] = ({ email, role, companyId = null, name }) => {
-    const newUser: AuthUser = {
-      id: crypto.randomUUID(),
+    let role: Role = "employee";
+    let companyId: string | null | undefined = null;
+
+    const hasSuper = (roles || []).some((r) => r.role === "super_admin");
+    const adminRow = (roles || []).find((r) => r.role === "admin");
+    const employeeRow = (roles || []).find((r) => r.role === "employee");
+
+    if (hasSuper) {
+      role = "super_admin";
+      companyId = null;
+    } else if (adminRow) {
+      role = "admin";
+      companyId = adminRow.company_id ?? null;
+    } else if (employeeRow) {
+      role = "employee";
+      companyId = employeeRow.company_id ?? null;
+    }
+
+
+    // Fetch profile (optional)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name, company_id")
+      .eq("id", uid)
+      .maybeSingle();
+
+    return {
+      id: uid,
       email,
-      name: name ?? email.split("@")[0],
+      name: profile?.display_name ?? email.split("@")[0],
       role,
-      companyId,
+      companyId: role === "super_admin" ? null : (companyId ?? profile?.company_id ?? null),
     };
-    setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
   };
 
-  const logout = () => {
+  useEffect(() => {
+    // Listen FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const s = session;
+      if (!s?.user) {
+        setUser(null);
+        setInitialized(true);
+        return;
+      }
+      // Defer Supabase calls outside the callback to avoid deadlocks
+      setTimeout(async () => {
+        // Attempt one-time bootstrap of super_admin (safe if already set)
+        try {
+          await supabase.rpc("bootstrap_super_admin");
+        } catch (e) {
+          // noop
+        }
+        const next = await computeAuthUser(s.user.id, s.user.email ?? "");
+        setUser(next);
+        setInitialized(true);
+      }, 0);
+    });
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const s = session;
+      if (s?.user) {
+        const next = await computeAuthUser(s.user.id, s.user.email ?? "");
+        setUser(next);
+      }
+      setInitialized(true);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const login: AuthContextValue["login"] = async (email, password, mode) => {
+    if (mode === "signup") {
+      const redirectUrl = `${window.location.origin}/`;
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: redirectUrl },
+      });
+      return { error: error?.message };
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error: error?.message };
+  };
+
+  const logout: AuthContextValue["logout"] = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
   };
 
   const value = useMemo(() => ({ user, login, logout }), [user]);
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{initialized ? children : null}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

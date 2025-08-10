@@ -1,19 +1,19 @@
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAuth, Role } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Seo from "@/components/seo/Seo";
 import heroImage from "@/assets/hero-finance.jpg";
+import { supabase } from "@/integrations/supabase/client";
 
 const schema = z.object({
   email: z.string().email(),
-  role: z.enum(["super_admin", "admin", "employee"]).default("employee"),
-  companyId: z.string().optional(),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  mode: z.enum(["signin", "signup"]).default("signin"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -32,17 +32,29 @@ const Login = () => {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { role: "employee" as Role },
+    defaultValues: { mode: "signin" },
   });
 
-  const role = watch("role");
+  const mode = watch("mode");
 
-  const onSubmit = (values: FormValues) => {
-    login({ email: values.email, role: values.role, companyId: values.role === "super_admin" ? null : values.companyId ?? "acme" });
-    if (from) return navigate(from, { replace: true });
-    if (values.role === "super_admin") navigate("/super");
-    else if (values.role === "admin") navigate("/admin");
-    else navigate("/employee");
+  const onSubmit = async (values: FormValues) => {
+    const { error } = await login(values.email, values.password, values.mode);
+    if (error) return alert(error);
+
+    // After sign-in, route by role
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role, company_id")
+        .eq("user_id", session.user.id);
+      let dest = "/";
+      if ((roles || []).some((r) => r.role === "super_admin")) dest = "/super";
+      else if ((roles || []).some((r) => r.role === "admin")) dest = "/admin";
+      else dest = "/employee";
+      return navigate(from || dest, { replace: true });
+    }
+    navigate(from || "/", { replace: true });
   };
 
   return (
@@ -55,39 +67,29 @@ const Login = () => {
       <section className="flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="mb-8">
-            <h1 className="text-3xl font-semibold">Welcome back</h1>
-            <p className="text-muted-foreground mt-2">Sign in to manage devices and repayments.</p>
+            <h1 className="text-3xl font-semibold">Welcome</h1>
+            <p className="text-muted-foreground mt-2">Sign in or create your account.</p>
           </div>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            <div className="flex gap-2">
+              <Button type="button" variant={mode === "signin" ? "hero" : "outline"} className="w-1/2" onClick={() => setValue("mode", "signin")}>Sign In</Button>
+              <Button type="button" variant={mode === "signup" ? "hero" : "outline"} className="w-1/2" onClick={() => setValue("mode", "signup")}>Sign Up</Button>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Work Email</Label>
+              <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" placeholder="you@company.com" {...register("email")} />
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label>Role</Label>
-              <Select onValueChange={(v) => setValue("role", v as Role)} defaultValue={"employee"}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="employee">Employee</SelectItem>
-                  <SelectItem value="admin">Company Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" placeholder="••••••••" {...register("password")} />
+              {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
             </div>
-            {role !== "super_admin" && (
-              <div className="space-y-2">
-                <Label htmlFor="companyId">Company ID</Label>
-                <Input id="companyId" placeholder="e.g. acme" {...register("companyId")} />
-              </div>
-            )}
             <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
-              Sign In
+              {mode === "signup" ? "Create account" : "Sign in"}
             </Button>
             <p className="text-xs text-muted-foreground">
-              For production, enable Supabase Auth to handle secure sign-in and tenant scoping.
+              First user to sign in will auto‑become Super Admin.
             </p>
             <div className="text-xs text-muted-foreground">
               <Link to="/">Back to home</Link>
@@ -100,3 +102,4 @@ const Login = () => {
 };
 
 export default Login;
+
