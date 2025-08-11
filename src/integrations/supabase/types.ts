@@ -35,6 +35,53 @@ export type Database = {
         }
         Relationships: []
       }
+      invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          company_id: string | null
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          company_id?: string | null
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          company_id?: string | null
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       laptops: {
         Row: {
           active: boolean
@@ -348,9 +395,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invitation: {
+        Args: { _token: string }
+        Returns: boolean
+      }
       bootstrap_super_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      create_invitation: {
+        Args: {
+          _email: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _company_id: string
+          _expires_at?: string
+        }
+        Returns: string
       }
       has_role: {
         Args: {
