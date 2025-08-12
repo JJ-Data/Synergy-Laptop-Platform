@@ -13,7 +13,6 @@ import { supabase } from "@/integrations/supabase/client";
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  mode: z.enum(["signin", "signup"]).default("signin"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -24,21 +23,18 @@ const Login = () => {
   const location = useLocation() as any;
   const from = location.state?.from?.pathname as string | undefined;
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { mode: "signin" },
-  });
+const {
+  register,
+  handleSubmit,
+  formState: { errors, isSubmitting },
+} = useForm<FormValues>({
+  resolver: zodResolver(schema),
+});
 
-  const mode = watch("mode");
+  
 
   const onSubmit = async (values: FormValues) => {
-    const { error } = await login(values.email, values.password, values.mode);
+    const { error } = await login(values.email, values.password, "signin");
     if (error) return alert(error);
 
     // After sign-in, route by role
@@ -68,13 +64,9 @@ const Login = () => {
         <div className="w-full max-w-md">
           <div className="mb-8">
             <h1 className="text-3xl font-semibold">Welcome</h1>
-            <p className="text-muted-foreground mt-2">Sign in or create your account.</p>
+            <p className="text-muted-foreground mt-2">Sign in to your account.</p>
           </div>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <div className="flex gap-2">
-              <Button type="button" variant={mode === "signin" ? "hero" : "outline"} className="w-1/2" onClick={() => setValue("mode", "signin")}>Sign In</Button>
-              <Button type="button" variant={mode === "signup" ? "hero" : "outline"} className="w-1/2" onClick={() => setValue("mode", "signup")}>Sign Up</Button>
-            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" placeholder="you@company.com" {...register("email")} />
@@ -86,11 +78,11 @@ const Login = () => {
               {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
             </div>
             <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
-              {mode === "signup" ? "Create account" : "Sign in"}
+              Sign in
             </Button>
-            <p className="text-xs text-muted-foreground">
-              First user to sign in will auto‑become Super Admin.
-            </p>
+            <Button asChild variant="outline" className="w-full">
+              <a href="mailto:?subject=Access request — Laptop Financing Platform&body=Hello Admin,%0D%0A%0D%0APlease invite me to the platform. My email is: ____%0D%0A%0D%0AThanks!">Contact Admin</a>
+            </Button>
             <div className="text-xs text-muted-foreground">
               <Link to="/">Back to home</Link>
             </div>
