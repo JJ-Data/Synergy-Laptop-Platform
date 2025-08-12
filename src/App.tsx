@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Login from "@/pages/auth/Login";
+import AcceptInvite from "@/pages/auth/AcceptInvite";
 import SuperDashboard from "@/pages/super/SuperDashboard";
 import AdminDashboard from "@/pages/company/AdminDashboard";
 import EmployeePortal from "@/pages/employee/EmployeePortal";
@@ -30,6 +31,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
 
             <Route
               path="/super"
