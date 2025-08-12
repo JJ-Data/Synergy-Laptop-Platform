@@ -5,17 +5,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import laptop1 from "@/assets/laptops/laptop1.jpg";
-import laptop2 from "@/assets/laptops/laptop2.jpg";
-import laptop3 from "@/assets/laptops/laptop3.jpg";
-
-const mockLaptops = [
-  { id: "1", model: "Zen X14", specs: "i7 • 16GB • 512GB", price: 420000, image: laptop1 },
-  { id: "2", model: "AeroBook 13", specs: "i5 • 8GB • 256GB", price: 285000, image: laptop2 },
-  { id: "3", model: "Proline 15", specs: "Ryzen 7 • 16GB • 1TB", price: 530000, image: laptop3 },
-];
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useCompany } from "@/context/CompanyContext";
 
 const AdminDashboard = () => {
+  const { companyId } = useCompany();
+
+  const { data: policy, isLoading: loadingPolicy } = useQuery({
+    queryKey: ["policy", companyId],
+    queryFn: async () => {
+      if (!companyId) return null;
+      const { data, error } = await supabase
+        .from("policies")
+        .select("max_amount_cents, interest_rate, durations_months")
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!companyId,
+  });
+
+  const { data: laptops, isLoading: loadingLaptops } = useQuery({
+    queryKey: ["laptops", companyId],
+    queryFn: async () => {
+      if (!companyId) return [] as any[];
+      const { data, error } = await supabase
+        .from("laptops")
+        .select("id, name, brand, cpu, ram_gb, storage_gb, price_cents, image_url, created_at")
+        .eq("company_id", companyId)
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!companyId,
+  });
+
   return (
     <AppLayout title="Company Admin">
       <Seo title="Company Admin | Dashboard" description="Manage catalog, policies, and financing requests." canonical="/admin" />
@@ -27,32 +54,40 @@ const AdminDashboard = () => {
             <CardDescription>Control max budgets and terms</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label>Max Amount (₦)</Label>
-                <Input defaultValue={300000} type="number" />
+            {!companyId && (
+              <div className="text-sm text-muted-foreground">No company context. Log in as an Admin to view policies.</div>
+            )}
+            {companyId && loadingPolicy && (
+              <div className="text-sm text-muted-foreground">Loading policy…</div>
+            )}
+            {companyId && !loadingPolicy && !policy && (
+              <div className="text-sm text-muted-foreground">No policy configured yet. Use the Policies page to create one.</div>
+            )}
+            {companyId && policy && (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Max Amount (₦)</Label>
+                  <Input value={(policy.max_amount_cents ?? 0) / 100} readOnly />
+                </div>
+                <div>
+                  <Label>Interest Rate (%)</Label>
+                  <Input value={policy.interest_rate ?? 0} readOnly />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label>Allowed Durations</Label>
+                  <Select disabled>
+                    <SelectTrigger>
+                      <SelectValue placeholder={policy.durations_months?.join(", ") || "—"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(policy.durations_months || []).map((m: number) => (
+                        <SelectItem key={m} value={String(m)}>{m} months</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label>Interest Rate (%)</Label>
-                <Input defaultValue={5} type="number" />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Allowed Durations</Label>
-                <Select defaultValue="6,12,18">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Durations" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="6,12,18">6, 12, 18 months</SelectItem>
-                    <SelectItem value="12,24">12, 24 months</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="mt-4 flex gap-3">
-              <Button variant="hero">Save</Button>
-              <Button variant="outline">Reset</Button>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -74,17 +109,35 @@ const AdminDashboard = () => {
           <Button variant="hero">Add Laptop</Button>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockLaptops.map((l) => (
+          {!companyId && (
+            <div className="text-sm text-muted-foreground">No company context.</div>
+          )}
+          {companyId && loadingLaptops && (
+            <div className="text-sm text-muted-foreground">Loading laptops…</div>
+          )}
+          {companyId && !loadingLaptops && (laptops?.length ?? 0) === 0 && (
+            <div className="text-sm text-muted-foreground">No laptops in catalog yet.</div>
+          )}
+          {companyId && (laptops || []).map((l) => (
             <Card key={l.id} className="group overflow-hidden">
               <div className="h-44 overflow-hidden">
-                <img src={l.image} alt={`${l.model} laptop image`} className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform" loading="lazy" />
+                <img
+                  src={l.image_url || "/placeholder.svg"}
+                  alt={`${l.name} laptop image`}
+                  className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
+                  loading="lazy"
+                />
               </div>
               <CardHeader>
-                <CardTitle className="text-lg">{l.model}</CardTitle>
-                <CardDescription>{l.specs}</CardDescription>
+                <CardTitle className="text-lg">{l.brand ? `${l.brand} ${l.name}` : l.name}</CardTitle>
+                <CardDescription>
+                  {[l.cpu, l.ram_gb ? `${l.ram_gb}GB` : null, l.storage_gb ? `${l.storage_gb}GB` : null]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
-                <div className="font-semibold">₦{l.price.toLocaleString()}</div>
+                <div className="font-semibold">₦{Math.round((l.price_cents ?? 0) / 100).toLocaleString()}</div>
                 <Button variant="outline">Edit</Button>
               </CardContent>
             </Card>

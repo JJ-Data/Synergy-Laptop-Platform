@@ -18,6 +18,7 @@ import AdminRequests from "@/pages/company/Requests";
 import EmployeeCatalog from "@/pages/employee/Catalog";
 import EmployeeRepayments from "@/pages/employee/Repayments";
 import { AuthProvider, ProtectedRoute } from "@/context/AuthContext";
+import { CompanyProvider } from "@/context/CompanyContext";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
+        <CompanyProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
@@ -124,6 +126,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
+        </CompanyProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
