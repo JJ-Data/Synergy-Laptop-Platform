@@ -15,6 +15,7 @@ import SuperUsers from "@/pages/super/Users";
 import AdminCatalog from "@/pages/company/Catalog";
 import AdminPolicies from "@/pages/company/Policies";
 import AdminRequests from "@/pages/company/Requests";
+import CompanyUsers from "@/pages/company/Users";
 import EmployeeCatalog from "@/pages/employee/Catalog";
 import EmployeeRepayments from "@/pages/employee/Repayments";
 import { AuthProvider, ProtectedRoute } from "@/context/AuthContext";
@@ -100,6 +101,14 @@ const App = () => (
               element={
                 <ProtectedRoute roles={["admin"]}>
                   <AdminRequests />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute roles={["admin"]}>
+                  <CompanyUsers />
                 </ProtectedRoute>
               }
             />
