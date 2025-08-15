@@ -37,7 +37,18 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="container flex items-center justify-between py-4">
-          <Link to={user ? (user.role === "super_admin" ? "/super" : user.role === "admin" ? "/admin" : "/employee") : "/"} className="font-semibold">
+          <Link
+            to={
+              user
+                ? user.role === "super_admin"
+                  ? "/super"
+                  : user.role === "admin"
+                  ? "/admin"
+                  : "/employee"
+                : "/"
+            }
+            className="font-semibold"
+          >
             Financelane
           </Link>
           <nav className="hidden md:flex items-center gap-6">
@@ -46,7 +57,11 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
                 key={n.to}
                 to={n.to}
                 className={({ isActive }) =>
-                  `text-sm ${isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`
+                  `text-sm ${
+                    isActive
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`
                 }
               >
                 {n.label}
@@ -54,7 +69,11 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            {user && <span className="text-sm text-muted-foreground hidden sm:inline">{user.email}</span>}
+            {user && (
+              <span className="text-sm text-muted-foreground hidden sm:inline">
+                {user.email}
+              </span>
+            )}
             {user ? (
               <Button variant="outline" size="sm" onClick={logout}>
                 Logout
@@ -73,7 +92,7 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
       </main>
       <footer className="border-t mt-12">
         <div className="container py-6 text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Financelane — Multi‑tenant device financing.
+          © {new Date().getFullYear()} Synergy — Laptop financing.
         </div>
       </footer>
     </div>
