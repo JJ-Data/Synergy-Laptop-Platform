@@ -1,7 +1,14 @@
 import { ReactNode } from "react";
 import { NavLink, Link } from "react-router-dom";
+import { Menu } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 interface AppLayoutProps {
   title?: string;
@@ -69,20 +76,61 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            {user && (
-              <span className="text-sm text-muted-foreground hidden sm:inline">
-                {user.email}
-              </span>
-            )}
-            {user ? (
-              <Button variant="outline" size="sm" onClick={logout}>
-                Logout
-              </Button>
-            ) : (
-              <Button asChild variant="hero" size="sm">
-                <Link to="/login">Login</Link>
-              </Button>
-            )}
+            <div className="hidden md:flex items-center gap-3">
+              {user && (
+                <span className="text-sm text-muted-foreground hidden sm:inline">
+                  {user.email}
+                </span>
+              )}
+              {user ? (
+                <Button variant="outline" size="sm" onClick={logout}>
+                  Logout
+                </Button>
+              ) : (
+                <Button asChild variant="hero" size="sm">
+                  <Link to="/login">Login</Link>
+                </Button>
+              )}
+            </div>
+            <div className="md:hidden">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Toggle menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="p-6">
+                  <nav className="flex flex-col gap-4 mt-4">
+                    {nav.map((n) => (
+                      <SheetClose asChild key={n.to}>
+                        <NavLink to={n.to} className="text-lg">
+                          {n.label}
+                        </NavLink>
+                      </SheetClose>
+                    ))}
+                    {user ? (
+                      <SheetClose asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={logout}
+                          className="mt-4"
+                        >
+                          Logout
+                        </Button>
+                      </SheetClose>
+                    ) : (
+                      <SheetClose asChild>
+                        <Button asChild variant="hero" size="sm" className="mt-4">
+                          <Link to="/login">Login</Link>
+                        </Button>
+                      </SheetClose>
+                    )}
+                  </nav>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
         </div>
       </header>
