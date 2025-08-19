@@ -29,6 +29,7 @@ import {
   FileText,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { calculateLoanProgress } from "@/lib/finance";
 
 // Enhanced types
 type LoanWithDetails = {
@@ -83,13 +84,6 @@ function getRepaymentStatusInfo(status: string, dueDate: string) {
       variant: "secondary" as const,
     };
   }
-}
-
-// Helper function to calculate loan progress
-function calculateLoanProgress(repayments: RepaymentWithDetails[]) {
-  const totalPayments = repayments.length;
-  const paidPayments = repayments.filter((r) => r.status === "paid").length;
-  return totalPayments > 0 ? (paidPayments / totalPayments) * 100 : 0;
 }
 
 const Repayments = () => {

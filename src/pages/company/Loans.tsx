@@ -42,6 +42,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { calculateLoanProgress } from "@/lib/finance";
 
 // Enhanced types
 type LoanWithDetails = {
@@ -78,17 +79,6 @@ type RepaymentWithDetails = {
     display_name?: string;
   };
 };
-
-// Helper function to calculate loan progress
-function calculateLoanProgress(
-  loanId: string,
-  repayments: RepaymentWithDetails[]
-) {
-  const loanRepayments = repayments.filter((r) => r.loan_id === loanId);
-  const totalPayments = loanRepayments.length;
-  const paidPayments = loanRepayments.filter((r) => r.status === "paid").length;
-  return totalPayments > 0 ? (paidPayments / totalPayments) * 100 : 0;
-}
 
 const Loans = () => {
   const { companyId, company } = useCompany();
@@ -407,8 +397,8 @@ const Loans = () => {
                   <div className="space-y-4">
                     {loans.map((loan) => {
                       const progress = calculateLoanProgress(
-                        loan.id,
-                        repayments
+                        repayments,
+                        loan.id
                       );
                       const loanRepayments = repayments.filter(
                         (r) => r.loan_id === loan.id
@@ -573,7 +563,7 @@ const Loans = () => {
                               ).toLocaleString()}
                             </div>
                             <Progress
-                              value={calculateLoanProgress(loan.id, repayments)}
+                              value={calculateLoanProgress(repayments, loan.id)}
                               className="w-24 h-2 mt-1"
                             />
                           </div>
@@ -771,15 +761,15 @@ const Loans = () => {
                         <span className="text-sm">Progress</span>
                         <span className="text-sm">
                           {Math.round(
-                            calculateLoanProgress(selectedLoan.id, repayments)
+                            calculateLoanProgress(repayments, selectedLoan.id)
                           )}
                           %
                         </span>
                       </div>
                       <Progress
                         value={calculateLoanProgress(
-                          selectedLoan.id,
-                          repayments
+                          repayments,
+                          selectedLoan.id
                         )}
                       />
                     </div>
