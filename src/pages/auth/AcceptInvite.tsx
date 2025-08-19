@@ -16,6 +16,12 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import type { InvitationDetails } from "@/types/invitations";
+
+interface ValidateInvitationResponse extends InvitationDetails {
+  valid: boolean;
+  error?: string;
+}
 
 const AcceptInvite = () => {
   const [params] = useSearchParams();
@@ -27,7 +33,9 @@ const AcceptInvite = () => {
     "checking" | "needs-auth" | "accepting" | "success" | "error"
   >("checking");
   const [message, setMessage] = useState<string>("");
-  const [inviteDetails, setInviteDetails] = useState<any>(null);
+  const [inviteDetails, setInviteDetails] = useState<
+    InvitationDetails | null
+  >(null);
 
   // Form state for signup/signin
   const [email, setEmail] = useState("");
@@ -54,7 +62,7 @@ const AcceptInvite = () => {
 
       try {
         // Use the public function to validate the token
-        const { data, error } = await supabase.rpc(
+        const { data, error } = await supabase.rpc<ValidateInvitationResponse>(
           "validate_invitation_token",
           {
             _token: token,
@@ -102,7 +110,7 @@ const AcceptInvite = () => {
           // Accept the invitation
           acceptInvitation();
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Invitation check error:", err);
         setStatus("error");
         setMessage("Failed to validate invitation.");
@@ -142,11 +150,13 @@ const AcceptInvite = () => {
         // Force a refresh to update user roles
         window.location.href = dashboardPath;
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Accept invitation error:", err);
       setStatus("error");
       setMessage(
-        err.message || "An error occurred while accepting the invitation."
+        err instanceof Error
+          ? err.message
+          : "An error occurred while accepting the invitation."
       );
     }
   };
@@ -203,9 +213,11 @@ const AcceptInvite = () => {
           // The useEffect will trigger and accept the invitation
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Auth error:", err);
-      toast.error(err.message || "Authentication failed");
+      toast.error(
+        err instanceof Error ? err.message : "Authentication failed"
+      );
     } finally {
       setIsSubmitting(false);
     }
