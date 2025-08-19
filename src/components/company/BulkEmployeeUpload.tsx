@@ -37,33 +37,50 @@ export const BulkEmployeeUpload = ({ companyId }: { companyId: string }) => {
     if (!results || results.length === 0) return;
 
     setUploading(true);
-    const successes = [];
-    const failures = [];
+    const successes: string[] = [];
+    const failures: { email: string; error: any }[] = [];
+    const batchSize = 10;
 
-    for (const row of results) {
-      if (!row.email) continue;
+    for (let i = 0; i < results.length; i += batchSize) {
+      const batch = results.slice(i, i + batchSize);
 
-      try {
-        const { data, error } = await supabase.rpc("create_invitation", {
-          _email: row.email,
-          _role: "employee",
-          _company_id: companyId,
-        });
+      const promises = batch.map((row: any) => {
+        if (!row.email) {
+          return Promise.resolve({ email: row.email, error: new Error("Invalid email") });
+        }
 
-        if (error) throw error;
-        successes.push(row.email);
-      } catch (error) {
-        failures.push({ email: row.email, error });
-      }
+        return supabase
+          .rpc("create_invitation", {
+            _email: row.email,
+            _role: "employee",
+            _company_id: companyId,
+          })
+          .then(({ error }) => {
+            if (error) throw error;
+            return { email: row.email };
+          })
+          .catch((error) => ({ email: row.email, error }));
+      });
+
+      const batchResults = await Promise.all(promises);
+
+      batchResults.forEach((res) => {
+        if (res.error) {
+          failures.push({ email: res.email, error: res.error });
+        } else {
+          successes.push(res.email);
+        }
+      });
     }
 
     setUploading(false);
 
-    if (successes.length > 0) {
+    if (failures.length === 0) {
       toast.success(`Sent ${successes.length} invitations successfully`);
-    }
-    if (failures.length > 0) {
+    } else if (successes.length === 0) {
       toast.error(`Failed to send ${failures.length} invitations`);
+    } else {
+      toast(`Sent ${successes.length} invitations, failed to send ${failures.length}`);
     }
   };
 
