@@ -3,12 +3,12 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Seo from "@/components/seo/Seo";
 import heroImage from "@/assets/hero-finance.jpg";
-import { supabase } from "@/integrations/supabase/client";
 
 const schema = z.object({
   email: z.string().email(),
@@ -18,39 +18,32 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 const Login = () => {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation() as any;
   const from = location.state?.from?.pathname as string | undefined;
 
-const {
-  register,
-  handleSubmit,
-  formState: { errors, isSubmitting },
-} = useForm<FormValues>({
-  resolver: zodResolver(schema),
-});
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+  });
 
-  
+  useEffect(() => {
+    if (user) {
+      let dest = "/";
+      if (user.role === "super_admin") dest = "/super";
+      else if (user.role === "admin") dest = "/admin";
+      else dest = "/employee";
+      navigate(from || dest, { replace: true });
+    }
+  }, [user, navigate, from]);
 
   const onSubmit = async (values: FormValues) => {
     const { error } = await login(values.email, values.password, "signin");
     if (error) return alert(error);
-
-    // After sign-in, route by role
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role, company_id")
-        .eq("user_id", session.user.id);
-      let dest = "/";
-      if ((roles || []).some((r) => r.role === "super_admin")) dest = "/super";
-      else if ((roles || []).some((r) => r.role === "admin")) dest = "/admin";
-      else dest = "/employee";
-      return navigate(from || dest, { replace: true });
-    }
-    navigate(from || "/", { replace: true });
   };
 
   return (
