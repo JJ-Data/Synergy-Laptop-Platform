@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Seo from "@/components/seo/Seo";
 import heroImage from "@/assets/hero-finance.jpg";
+import { toast } from "sonner";
 
 const schema = z.object({
   email: z.string().email(),
@@ -20,8 +21,8 @@ type FormValues = z.infer<typeof schema>;
 const Login = () => {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation() as any;
-  const from = location.state?.from?.pathname as string | undefined;
+  const location = useLocation();
+  const from = (location.state as { from?: { pathname?: string } } | undefined)?.from?.pathname;
 
   const {
     register,
@@ -43,7 +44,7 @@ const Login = () => {
 
   const onSubmit = async (values: FormValues) => {
     const { error } = await login(values.email, values.password, "signin");
-    if (error) return alert(error);
+    if (error) return toast.error(error.message);
   };
 
   return (
