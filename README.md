@@ -60,6 +60,15 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Environment Variables
+
+The project requires Supabase credentials to be set in your environment files:
+
+- `VITE_SUPABASE_URL` – URL of your Supabase instance.
+- `VITE_SUPABASE_ANON_KEY` – Public anon key for the project.
+
+Define these in `.env`, `.env.development`, `.env.production`, and any other environment-specific files.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/0a4598ef-3430-42ad-88ff-ce88e15d1104) and click on Share -> Publish.
