@@ -17,6 +17,7 @@ import { Search, UserPlus, User, Mail } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import type { Database } from "@/integrations/supabase/types";
 
 type CompanyUser = {
   id: string;
@@ -51,46 +52,16 @@ const Users = () => {
     queryFn: async () => {
       if (!companyId) return [];
 
-      // Get user roles for this company
-      const { data: userRoles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role")
-        .eq("company_id", companyId);
-      
-      if (rolesError) throw rolesError;
+      const { data, error } = await supabase.functions.invoke<{ users: CompanyUser[] }>("list-company-users", {
+        body: { companyId }
+      });
+      if (error) throw error;
 
-      if (!userRoles?.length) return [];
-
-      // Get profiles for these users
-      const userIds = userRoles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, display_name, created_at")
-        .in("id", userIds);
-      
-      if (profilesError) throw profilesError;
-
-       // Get auth users for email addresses  
-       const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-       if (authError) throw authError;
-
-        // Combine the data
-        const companyUsers: CompanyUser[] = userRoles.map((roleData: any) => {
-          const profile = profiles?.find((p: any) => p.id === roleData.user_id);
-          const authUser = authUsers.users.find((u: any) => u.id === roleData.user_id);
-
-          return {
-            id: roleData.user_id,
-            email: authUser?.email || '',
-            display_name: profile?.display_name || undefined,
-            role: roleData.role,
-            created_at: authUser?.created_at || profile?.created_at || ''
-          };
-        }).filter(user => 
-          searchTerm === "" || 
-          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (user.display_name && user.display_name.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+      const companyUsers = (data?.users || []).filter(user =>
+        searchTerm === "" ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (user.display_name && user.display_name.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
 
       return companyUsers;
     },
@@ -102,7 +73,7 @@ const Users = () => {
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
       const { error } = await supabase
         .from("user_roles")
-        .update({ role: role as any })
+        .update({ role: role as Database["public"]["Enums"]["app_role"] })
         .eq("user_id", userId)
         .eq("company_id", companyId);
       if (error) throw error;
