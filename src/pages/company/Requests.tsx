@@ -51,6 +51,7 @@ import {
   Filter,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { calculateMonthlyPayment } from "@/lib/finance";
 
 // Enhanced request type with relations
 type RequestWithDetails = {
@@ -76,19 +77,6 @@ type RequestWithDetails = {
     avatar_url?: string;
   };
 };
-
-// Helper function to calculate monthly payment
-function calculateMonthlyPayment(
-  principal: number,
-  months: number,
-  annualRate: number
-): number {
-  if (annualRate === 0) return principal / months;
-  const monthlyRate = annualRate / 100 / 12;
-  const payment =
-    (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
-  return Math.round(payment);
-}
 
 // Helper function to get status info
 function getStatusInfo(status: string) {
@@ -488,7 +476,7 @@ const Requests = () => {
                                     Monthly Payment
                                   </div>
                                   <div className="font-semibold">
-                                    ₦{monthlyPayment.toLocaleString()}
+                                    ₦{Math.round(monthlyPayment).toLocaleString()}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
                                     {request.duration_months} months
@@ -669,10 +657,12 @@ const Requests = () => {
                       <span>Monthly Payment</span>
                       <span className="font-semibold">
                         ₦
-                        {calculateMonthlyPayment(
-                          selectedRequest.requested_amount_cents / 100,
-                          selectedRequest.duration_months,
-                          interestRate
+                        {Math.round(
+                          calculateMonthlyPayment(
+                            selectedRequest.requested_amount_cents / 100,
+                            selectedRequest.duration_months,
+                            interestRate
+                          )
                         ).toLocaleString()}
                       </span>
                     </div>
@@ -680,7 +670,7 @@ const Requests = () => {
                       <span>Total Amount</span>
                       <span>
                         ₦
-                        {(
+                        {Math.round(
                           calculateMonthlyPayment(
                             selectedRequest.requested_amount_cents / 100,
                             selectedRequest.duration_months,
@@ -693,7 +683,7 @@ const Requests = () => {
                       <span>Total Interest</span>
                       <span>
                         ₦
-                        {(
+                        {Math.round(
                           calculateMonthlyPayment(
                             selectedRequest.requested_amount_cents / 100,
                             selectedRequest.duration_months,

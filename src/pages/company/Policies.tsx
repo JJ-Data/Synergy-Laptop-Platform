@@ -31,6 +31,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { Settings, Calculator, Plus, Save, AlertTriangle } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { calculateMonthlyPayment } from "@/lib/finance";
 
 const policySchema = z.object({
   max_amount_cents: z.coerce.number().min(1000000, "Minimum amount is ₦10,000"), // ₦10k minimum
@@ -47,19 +48,6 @@ type PolicyFormData = z.infer<typeof policySchema>;
 
 // Predefined duration options
 const DURATION_OPTIONS = [3, 6, 9, 12, 18, 24, 36];
-
-// Helper function to calculate monthly payment
-const calculateMonthlyPayment = (
-  principal: number,
-  months: number,
-  annualRate: number
-): number => {
-  if (annualRate === 0) return principal / months;
-  const monthlyRate = annualRate / 100 / 12;
-  const payment =
-    (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
-  return payment;
-};
 
 const Policies = () => {
   const { companyId, company } = useCompany();
