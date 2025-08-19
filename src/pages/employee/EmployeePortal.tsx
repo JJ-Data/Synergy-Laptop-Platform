@@ -15,32 +15,94 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import {
+  ShoppingCart,
+  Calculator,
+  CreditCard,
+  CheckCircle,
+  Clock,
+  XCircle,
+  AlertCircle,
+  FileText,
+  Laptop,
+} from "lucide-react";
+import type { Tables } from "@/integrations/supabase/types";
 
-function computeMonthly(price: number, months: number, interestRate: number) {
+// Helper function to calculate monthly payment
+function computeMonthly(
+  price: number,
+  months: number,
+  interestRate: number
+): number {
+  if (interestRate === 0) return price / months;
   const monthlyRate = interestRate / 100 / 12;
   const payment =
-    monthlyRate === 0
-      ? price / months
-      : (price * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
+    (price * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
   return Math.round(payment);
+}
+
+// Helper function to get status color and icon
+function getRequestStatusInfo(status: string) {
+  switch (status) {
+    case "pending":
+      return {
+        color: "bg-yellow-100 text-yellow-800",
+        icon: Clock,
+        label: "Pending Review",
+      };
+    case "approved":
+      return {
+        color: "bg-green-100 text-green-800",
+        icon: CheckCircle,
+        label: "Approved",
+      };
+    case "rejected":
+      return {
+        color: "bg-red-100 text-red-800",
+        icon: XCircle,
+        label: "Rejected",
+      };
+    case "purchased":
+      return {
+        color: "bg-blue-100 text-blue-800",
+        icon: CheckCircle,
+        label: "Purchased",
+      };
+    default:
+      return {
+        color: "bg-gray-100 text-gray-800",
+        icon: AlertCircle,
+        label: "Unknown",
+      };
+  }
 }
 
 const EmployeePortal = () => {
   const { companyId } = useCompany();
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [months, setMonths] = useState(12);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const queryClient = useQueryClient();
+  const [selectedLaptopId, setSelectedLaptopId] = useState<string | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState(12);
+  const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
 
+  // Fetch company policy
   const { data: policy } = useQuery({
     queryKey: ["policy", companyId],
     queryFn: async () => {
@@ -56,15 +118,14 @@ const EmployeePortal = () => {
     enabled: !!companyId,
   });
 
-  const { data: laptops, isLoading } = useQuery({
+  // Fetch available laptops
+  const { data: laptops, isLoading: loadingLaptops } = useQuery({
     queryKey: ["laptops", companyId],
     queryFn: async () => {
-      if (!companyId) return [] as any[];
+      if (!companyId) return [] as Tables<"laptops">[];
       const { data, error } = await supabase
         .from("laptops")
-        .select(
-          "id, name, brand, cpu, ram_gb, storage_gb, price_cents, image_url, created_at"
-        )
+        .select("*")
         .eq("company_id", companyId)
         .eq("active", true)
         .order("created_at", { ascending: false });
@@ -74,97 +135,118 @@ const EmployeePortal = () => {
     enabled: !!companyId,
   });
 
-  // Check for existing pending request
-  const { data: existingRequest } = useQuery({
-    queryKey: ["existing-request", user?.id, companyId],
+  // Fetch user's requests
+  const { data: userRequests, isLoading: loadingRequests } = useQuery({
+    queryKey: ["user-requests", user?.id],
     queryFn: async () => {
-      if (!user || !companyId) return null;
+      if (!user?.id) return [];
       const { data, error } = await supabase
         .from("requests")
-        .select("*")
+        .select(
+          `
+          *,
+          laptops(name, brand, price_cents, image_url)
+        `
+        )
         .eq("employee_id", user.id)
-        .eq("company_id", companyId)
-        .in("status", ["pending", "approved"])
-        .maybeSingle();
-      if (error && error.code !== "PGRST116") throw error; // PGRST116 = no rows found
-      return data;
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
     },
-    enabled: !!user && !!companyId,
+    enabled: !!user?.id,
   });
 
+  // Auto-select first laptop
   useEffect(() => {
-    if (!selectedId && laptops && laptops.length > 0) {
-      setSelectedId(laptops[0].id);
+    if (!selectedLaptopId && laptops && laptops.length > 0) {
+      setSelectedLaptopId(laptops[0].id);
     }
-  }, [laptops, selectedId]);
+  }, [laptops, selectedLaptopId]);
 
-  const selected = useMemo(
-    () => (laptops || []).find((l) => l.id === selectedId) || null,
-    [laptops, selectedId]
+  // Submit financing request
+  const submitRequestMutation = useMutation({
+    mutationFn: async ({
+      laptopId,
+      duration,
+    }: {
+      laptopId: string;
+      duration: number;
+    }) => {
+      if (!user?.id || !companyId)
+        throw new Error("Missing user or company info");
+
+      const laptop = laptops?.find((l) => l.id === laptopId);
+      if (!laptop) throw new Error("Laptop not found");
+
+      const { error } = await supabase.from("requests").insert([
+        {
+          company_id: companyId,
+          employee_id: user.id,
+          laptop_id: laptopId,
+          requested_amount_cents: laptop.price_cents,
+          duration_months: duration,
+        },
+      ]);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-requests"] });
+      toast.success("Financing request submitted successfully!");
+      setIsRequestDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error("Failed to submit request: " + error.message);
+    },
+  });
+
+  const selectedLaptop = useMemo(
+    () => (laptops || []).find((l) => l.id === selectedLaptopId) || null,
+    [laptops, selectedLaptopId]
   );
-  const durations =
+
+  const availableDurations =
     policy?.durations_months && policy.durations_months.length > 0
       ? policy.durations_months
       : [6, 12, 18];
+
   const interestRate = policy?.interest_rate ?? 0;
-  const monthly = useMemo(() => {
-    const price = selected ? Math.round((selected.price_cents ?? 0) / 100) : 0;
-    return computeMonthly(price, months, interestRate);
-  }, [selected, months, interestRate]);
 
-  const handleRequestFinancing = async () => {
-    if (!selected || !user || !companyId) {
-      toast.error("Please select a laptop");
+  const monthlyPayment = useMemo(() => {
+    if (!selectedLaptop) return 0;
+    const price = Math.round((selectedLaptop.price_cents ?? 0) / 100);
+    return computeMonthly(price, selectedDuration, interestRate);
+  }, [selectedLaptop, selectedDuration, interestRate]);
+
+  const totalPayment = monthlyPayment * selectedDuration;
+  const interestAmount =
+    totalPayment -
+    (selectedLaptop ? Math.round(selectedLaptop.price_cents / 100) : 0);
+
+  const handleSubmitRequest = () => {
+    if (!selectedLaptop) {
+      toast.error("Please select a laptop first");
       return;
     }
 
-    // Check if request exceeds policy limit
     if (
-      policy?.max_amount_cents &&
-      selected.price_cents > policy.max_amount_cents
+      !policy?.max_amount_cents ||
+      selectedLaptop.price_cents > policy.max_amount_cents
     ) {
-      toast.error(
-        `This laptop exceeds the maximum financing limit of ₦${(
-          policy.max_amount_cents / 100
-        ).toLocaleString()}`
-      );
+      toast.error("Selected laptop exceeds maximum loan amount");
       return;
     }
 
-    // Check for existing request
-    if (existingRequest) {
-      toast.error("You already have a pending or active financing request");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const { data, error } = await supabase
-        .from("requests")
-        .insert({
-          company_id: companyId,
-          employee_id: user.id,
-          laptop_id: selected.id,
-          requested_amount_cents: selected.price_cents,
-          duration_months: months,
-          status: "pending",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      toast.success(
-        "Financing request submitted successfully! Your admin will review it soon."
-      );
-      navigate("/employee/repayments");
-    } catch (error: any) {
-      console.error("Request submission error:", error);
-      toast.error(error.message || "Failed to submit request");
-    } finally {
-      setIsSubmitting(false);
-    }
+    submitRequestMutation.mutate({
+      laptopId: selectedLaptop.id,
+      duration: selectedDuration,
+    });
   };
+
+  // Check if user has any pending requests
+  const hasPendingRequest = userRequests?.some(
+    (req) => req.status === "pending"
+  );
 
   return (
     <AppLayout title="Employee Portal">
@@ -174,236 +256,368 @@ const EmployeePortal = () => {
         canonical="/employee"
       />
 
-      {existingRequest && (
-        <Card className="mb-6 border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="text-orange-800">Active Request</CardTitle>
-            <CardDescription>
-              You have a {existingRequest.status} financing request.
-              {existingRequest.status === "pending" &&
-                " Please wait for admin approval."}
-              {existingRequest.status === "approved" &&
-                " Check your repayments page for details."}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      <div className="space-y-8">
+        {/* Current Requests Status */}
+        {userRequests && userRequests.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Your Financing Requests
+              </CardTitle>
+              <CardDescription>
+                Track the status of your submitted requests
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {loadingRequests ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    Loading requests...
+                  </div>
+                ) : (
+                  userRequests.map((request: any) => {
+                    const statusInfo = getRequestStatusInfo(request.status);
+                    const StatusIcon = statusInfo.icon;
 
-      <section className="grid lg:grid-cols-2 gap-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Laptops</CardTitle>
-            <CardDescription>Company-approved devices</CardDescription>
-          </CardHeader>
-          <CardContent className="grid sm:grid-cols-2 gap-4">
-            {!companyId && (
-              <div className="text-sm text-muted-foreground">
-                No company context.
+                    return (
+                      <div
+                        key={request.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
+                            <Laptop className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {request.laptops?.brand} {request.laptops?.name}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              ₦
+                              {Math.round(
+                                (request.requested_amount_cents || 0) / 100
+                              ).toLocaleString()}{" "}
+                              • {request.duration_months} months
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Submitted{" "}
+                              {new Date(
+                                request.created_at
+                              ).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className={statusInfo.color}>
+                            <StatusIcon className="h-3 w-3 mr-1" />
+                            {statusInfo.label}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            )}
-            {companyId && isLoading && (
-              <div className="col-span-2 flex justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
-            {companyId && !isLoading && (laptops?.length ?? 0) === 0 && (
-              <div className="col-span-2 text-center py-8 text-muted-foreground">
-                <p>No laptops available yet.</p>
-                <p className="text-sm mt-2">
-                  Please check back later or contact your admin.
-                </p>
-              </div>
-            )}
-            {companyId &&
-              (laptops || []).map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => setSelectedId(l.id)}
-                  disabled={!!existingRequest}
-                  className={`text-left rounded-md border p-3 transition-all hover:shadow ${
-                    selected?.id === l.id ? "ring-2 ring-primary" : ""
-                  } ${
-                    existingRequest
-                      ? "opacity-50 cursor-not-allowed"
-                      : "cursor-pointer"
-                  }`}
-                >
-                  <div className="h-28 overflow-hidden rounded bg-gray-100">
-                    <img
-                      src={l.image_url || "/placeholder.svg"}
-                      alt={`${l.name} laptop`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="mt-3 font-medium">
-                    {l.brand ? `${l.brand} ${l.name}` : l.name}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {[
-                      l.cpu,
-                      l.ram_gb ? `${l.ram_gb}GB` : null,
-                      l.storage_gb ? `${l.storage_gb}GB` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" • ")}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">
-                    ₦{Math.round((l.price_cents ?? 0) / 100).toLocaleString()}
-                  </div>
-                </button>
-              ))}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Repayment Plan</CardTitle>
-            <CardDescription>Preview your monthly payment</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!selected ? (
-              <div className="text-sm text-muted-foreground">
-                Select a laptop to preview your plan.
-              </div>
-            ) : (
-              <>
-                <div className="grid sm:grid-cols-2 gap-4">
+        {/* Main Selection Interface */}
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Laptop Selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Available Laptops</CardTitle>
+              <CardDescription>
+                Company-approved devices for financing
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!companyId && (
+                <div className="text-sm text-muted-foreground">
+                  No company context.
+                </div>
+              )}
+              {companyId && loadingLaptops && (
+                <div className="text-center py-8 text-muted-foreground">
+                  Loading laptops...
+                </div>
+              )}
+              {companyId && !loadingLaptops && (laptops?.length ?? 0) === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No laptops available yet. Contact your admin.
+                </div>
+              )}
+              {companyId && laptops && laptops.length > 0 && (
+                <div className="grid gap-4">
+                  {laptops.map((laptop) => (
+                    <button
+                      key={laptop.id}
+                      onClick={() => setSelectedLaptopId(laptop.id)}
+                      className={`text-left rounded-lg border p-4 transition-all hover:shadow-md ${
+                        selectedLaptop?.id === laptop.id
+                          ? "ring-2 ring-primary border-primary"
+                          : "border-border"
+                      }`}
+                    >
+                      <div className="flex gap-4">
+                        <div className="w-20 h-20 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
+                          <img
+                            src={laptop.image_url || "/placeholder.svg"}
+                            alt={`${laptop.name} image`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">
+                            {laptop.brand
+                              ? `${laptop.brand} ${laptop.name}`
+                              : laptop.name}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {[
+                              laptop.cpu,
+                              laptop.ram_gb ? `${laptop.ram_gb}GB RAM` : null,
+                              laptop.storage_gb
+                                ? `${laptop.storage_gb}GB Storage`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" • ")}
+                          </div>
+                          <div className="text-lg font-semibold mt-2">
+                            ₦
+                            {Math.round(
+                              (laptop.price_cents ?? 0) / 100
+                            ).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payment Calculator */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calculator className="h-5 w-5" />
+                Payment Calculator
+              </CardTitle>
+              <CardDescription>Configure your repayment plan</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!selectedLaptop ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Select a laptop to see payment details
+                </div>
+              ) : (
+                <div className="space-y-6">
                   <div>
-                    <div className="text-sm text-muted-foreground">
-                      Selected
+                    <div className="text-sm text-muted-foreground mb-2">
+                      Selected Device
                     </div>
                     <div className="font-semibold">
-                      {selected.brand
-                        ? `${selected.brand} ${selected.name}`
-                        : selected.name}
+                      {selectedLaptop.brand
+                        ? `${selectedLaptop.brand} ${selectedLaptop.name}`
+                        : selectedLaptop.name}
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Price</div>
-                    <div className="font-semibold">
+                    <div className="text-2xl font-bold mt-1">
                       ₦
                       {Math.round(
-                        (selected.price_cents ?? 0) / 100
+                        (selectedLaptop.price_cents ?? 0) / 100
                       ).toLocaleString()}
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <div className="mb-2 text-sm text-muted-foreground">
-                      Duration
+
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      Repayment Duration
                     </div>
                     <Select
-                      defaultValue={months.toString()}
-                      onValueChange={(v) => setMonths(parseInt(v))}
-                      disabled={!!existingRequest}
+                      value={selectedDuration.toString()}
+                      onValueChange={(v) => setSelectedDuration(parseInt(v))}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {durations.map((m: number) => (
-                          <SelectItem key={m} value={m.toString()}>
-                            {m} months
+                        {availableDurations.map((duration: number) => (
+                          <SelectItem
+                            key={duration}
+                            value={duration.toString()}
+                          >
+                            {duration} months
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
 
-                {policy?.max_amount_cents &&
-                  selected.price_cents > policy.max_amount_cents && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                      <p className="text-sm text-red-800">
-                        This laptop exceeds the maximum financing limit of ₦
-                        {(policy.max_amount_cents / 100).toLocaleString()}
-                      </p>
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Monthly Payment</span>
+                      <span className="font-semibold text-lg">
+                        ₦{monthlyPayment.toLocaleString()}
+                      </span>
                     </div>
-                  )}
 
-                <div className="mt-6 rounded-md border p-4 bg-secondary/30">
-                  <div className="text-sm text-muted-foreground">
-                    Estimated monthly payment
-                  </div>
-                  <div className="text-3xl font-semibold mt-1">
-                    ₦{monthly.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Interest rate: {interestRate}% per year
-                  </div>
-                </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span>Total Amount</span>
+                      <span>₦{totalPayment.toLocaleString()}</span>
+                    </div>
 
-                <div className="mt-4 flex gap-3">
+                    {interestRate > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span>Interest ({interestRate}% APR)</span>
+                        <span>₦{interestAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     variant="hero"
-                    onClick={handleRequestFinancing}
-                    disabled={
-                      isSubmitting ||
-                      !selected ||
-                      !!existingRequest ||
-                      (policy?.max_amount_cents &&
-                        selected.price_cents > policy.max_amount_cents)
-                    }
-                    className="flex-1"
+                    className="w-full"
+                    onClick={() => setIsRequestDialogOpen(true)}
+                    disabled={hasPendingRequest}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : existingRequest ? (
-                      "Request Already Exists"
-                    ) : (
-                      "Request Financing"
-                    )}
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    {hasPendingRequest
+                      ? "Request Pending"
+                      : "Request Financing"}
                   </Button>
-                  <Button variant="outline" disabled={!!existingRequest}>
-                    View Terms
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </section>
 
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold mb-4">Current Financing</h2>
-        <Card>
-          <CardHeader>
-            <CardTitle>Status</CardTitle>
-            <CardDescription>Track your balance and history</CardDescription>
-          </CardHeader>
-          <CardContent className="grid sm:grid-cols-3 gap-4">
-            <div>
-              <div className="text-sm text-muted-foreground">Outstanding</div>
-              <div className="font-semibold">
-                {existingRequest?.status === "approved"
-                  ? "View in Repayments"
-                  : "—"}
+                  {hasPendingRequest && (
+                    <div className="text-sm text-muted-foreground text-center">
+                      You have a pending request. Please wait for approval
+                      before submitting another.
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Policy Information */}
+        {policy && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Financing Information</CardTitle>
+              <CardDescription>Your company's financing terms</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    ₦
+                    {Math.round(policy.max_amount_cents / 100).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-blue-700">Maximum Loan</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {policy.interest_rate}%
+                  </div>
+                  <div className="text-sm text-green-700">Annual Interest</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {availableDurations.length}
+                  </div>
+                  <div className="text-sm text-purple-700">
+                    Duration Options
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Request Confirmation Dialog */}
+      <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Financing Request</DialogTitle>
+            <DialogDescription>
+              Review your selection before submitting
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedLaptop && (
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <div className="w-16 h-16 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
+                  <img
+                    src={selectedLaptop.image_url || "/placeholder.svg"}
+                    alt={selectedLaptop.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <div className="font-medium">
+                    {selectedLaptop.brand} {selectedLaptop.name}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ₦
+                    {Math.round(
+                      selectedLaptop.price_cents / 100
+                    ).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Duration:</span>
+                  <span>{selectedDuration} months</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Monthly Payment:</span>
+                  <span className="font-semibold">
+                    ₦{monthlyPayment.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Amount:</span>
+                  <span>₦{totalPayment.toLocaleString()}</span>
+                </div>
+                {interestRate > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Interest:</span>
+                    <span>₦{interestAmount.toLocaleString()}</span>
+                  </div>
+                )}
               </div>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">
-                Next Deduction
-              </div>
-              <div className="font-semibold">
-                {existingRequest?.status === "approved"
-                  ? "Check Repayments"
-                  : "—"}
-              </div>
-            </div>
-            <div className="flex items-end justify-end">
-              <Button
-                variant="subtle"
-                onClick={() => navigate("/employee/repayments")}
-              >
-                View Details
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsRequestDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitRequest}
+              disabled={submitRequestMutation.isPending}
+            >
+              {submitRequestMutation.isPending
+                ? "Submitting..."
+                : "Submit Request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };
