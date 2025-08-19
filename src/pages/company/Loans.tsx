@@ -9,16 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,51 +25,13 @@ import {
   CheckCircle,
   Clock,
   User,
-  Eye,
-  Calendar,
-  CreditCard,
-  FileText,
-  Download,
   BarChart3,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import { calculateLoanProgress } from "@/lib/finance";
-
-// Enhanced types
-type LoanWithDetails = {
-  id: string;
-  principal_cents: number;
-  interest_rate: number;
-  start_date: string;
-  end_date: string;
-  status: string;
-  created_at: string;
-  employee_id: string;
-  requests: {
-    laptops: {
-      name: string;
-      brand: string;
-      image_url?: string;
-    };
-  };
-  profiles: {
-    display_name?: string;
-    avatar_url?: string;
-  };
-};
-
-type RepaymentWithDetails = {
-  id: string;
-  due_date: string;
-  amount_cents: number;
-  paid_at?: string;
-  status: string;
-  loan_id: string;
-  employee_id: string;
-  profiles: {
-    display_name?: string;
-  };
-};
+import LoanTable from "@/components/company/LoanTable";
+import LoanDetailsDialog from "@/components/company/LoanDetailsDialog";
+import type { LoanWithDetails, RepaymentWithDetails } from "@/types/loan";
 
 const Loans = () => {
   const { companyId, company } = useCompany();
@@ -377,147 +330,12 @@ const Loans = () => {
 
           {/* All Loans Tab */}
           <TabsContent value="overview" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>All Company Loans</CardTitle>
-                <CardDescription>
-                  Complete overview of employee financing
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loadingLoans ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Loading loans...
-                  </div>
-                ) : loans.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No loans found
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {loans.map((loan) => {
-                      const progress = calculateLoanProgress(
-                        repayments,
-                        loan.id
-                      );
-                      const loanRepayments = repayments.filter(
-                        (r) => r.loan_id === loan.id
-                      );
-                      const remainingAmount =
-                        loanRepayments
-                          .filter((r) => r.status === "due")
-                          .reduce((sum, r) => sum + r.amount_cents, 0) / 100;
-
-                      return (
-                        <div
-                          key={loan.id}
-                          className="border rounded-lg p-6 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-4">
-                              <Avatar className="h-12 w-12">
-                                <AvatarImage
-                                  src={loan.profiles?.avatar_url || undefined}
-                                />
-                                <AvatarFallback>
-                                  <User className="h-6 w-6" />
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="font-medium">
-                                  {loan.profiles?.display_name ||
-                                    "Unknown Employee"}
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  {loan.requests.laptops.brand}{" "}
-                                  {loan.requests.laptops.name}
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  Started{" "}
-                                  {new Date(
-                                    loan.start_date
-                                  ).toLocaleDateString()}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-semibold text-lg">
-                                ₦
-                                {Math.round(
-                                  loan.principal_cents / 100
-                                ).toLocaleString()}
-                              </div>
-                              <Badge
-                                variant={
-                                  loan.status === "active"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                              >
-                                {loan.status}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-sm">Progress</span>
-                                <span className="text-sm text-muted-foreground">
-                                  {Math.round(progress)}%
-                                </span>
-                              </div>
-                              <Progress value={progress} className="h-2" />
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-4 text-center">
-                              <div className="p-2 bg-muted rounded">
-                                <div className="text-sm font-medium">
-                                  ₦
-                                  {Math.round(
-                                    loan.principal_cents / 100
-                                  ).toLocaleString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Principal
-                                </div>
-                              </div>
-                              <div className="p-2 bg-muted rounded">
-                                <div className="text-sm font-medium">
-                                  ₦{remainingAmount.toLocaleString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Remaining
-                                </div>
-                              </div>
-                              <div className="p-2 bg-muted rounded">
-                                <div className="text-sm font-medium">
-                                  {loan.interest_rate}%
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Interest
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex justify-end">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openLoanDetails(loan)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View Details
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <LoanTable
+              loans={loans}
+              repayments={repayments}
+              loading={loadingLoans}
+              onViewDetails={openLoanDetails}
+            />
           </TabsContent>
 
           {/* Active Loans Tab */}
@@ -694,172 +512,12 @@ const Loans = () => {
       </div>
 
       {/* Loan Details Modal */}
-      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Loan Details</DialogTitle>
-            <DialogDescription>
-              Complete loan and repayment information
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedLoan && (
-            <div className="space-y-6">
-              {/* Loan Overview */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-3">Loan Information</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Employee:</span>
-                      <span className="font-medium">
-                        {selectedLoan.profiles?.display_name || "Unknown"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Device:</span>
-                      <span className="font-medium">
-                        {selectedLoan.requests.laptops.brand}{" "}
-                        {selectedLoan.requests.laptops.name}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Principal Amount:</span>
-                      <span className="font-medium">
-                        ₦
-                        {Math.round(
-                          selectedLoan.principal_cents / 100
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Interest Rate:</span>
-                      <span className="font-medium">
-                        {selectedLoan.interest_rate}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Start Date:</span>
-                      <span className="font-medium">
-                        {new Date(selectedLoan.start_date).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>End Date:</span>
-                      <span className="font-medium">
-                        {new Date(selectedLoan.end_date).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium mb-3">Repayment Progress</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm">Progress</span>
-                        <span className="text-sm">
-                          {Math.round(
-                            calculateLoanProgress(repayments, selectedLoan.id)
-                          )}
-                          %
-                        </span>
-                      </div>
-                      <Progress
-                        value={calculateLoanProgress(
-                          repayments,
-                          selectedLoan.id
-                        )}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-center p-2 bg-green-50 rounded">
-                        <div className="font-medium text-green-800">
-                          {
-                            repayments.filter(
-                              (r) =>
-                                r.loan_id === selectedLoan.id &&
-                                r.status === "paid"
-                            ).length
-                          }
-                        </div>
-                        <div className="text-green-600">Paid</div>
-                      </div>
-                      <div className="text-center p-2 bg-orange-50 rounded">
-                        <div className="font-medium text-orange-800">
-                          {
-                            repayments.filter(
-                              (r) =>
-                                r.loan_id === selectedLoan.id &&
-                                r.status === "due"
-                            ).length
-                          }
-                        </div>
-                        <div className="text-orange-600">Remaining</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Repayment Schedule */}
-              <div>
-                <h4 className="font-medium mb-3">Repayment Schedule</h4>
-                <div className="max-h-64 overflow-y-auto border rounded-lg">
-                  <div className="space-y-2 p-4">
-                    {repayments
-                      .filter((r) => r.loan_id === selectedLoan.id)
-                      .map((repayment) => (
-                        <div
-                          key={repayment.id}
-                          className="flex justify-between items-center p-2 border rounded"
-                        >
-                          <div>
-                            <div className="text-sm font-medium">
-                              ₦
-                              {Math.round(
-                                repayment.amount_cents / 100
-                              ).toLocaleString()}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Due:{" "}
-                              {new Date(
-                                repayment.due_date
-                              ).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <Badge
-                            variant={
-                              repayment.status === "paid"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {repayment.status}
-                          </Badge>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDetailsDialogOpen(false)}
-            >
-              Close
-            </Button>
-            <Button>
-              <Download className="h-4 w-4 mr-2" />
-              Export Details
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LoanDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        loan={selectedLoan}
+        repayments={repayments}
+      />
     </AppLayout>
   );
 };
