@@ -1,7 +1,7 @@
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import {
   Card,
@@ -13,6 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Calendar, CreditCard, TrendingUp } from "lucide-react";
+
+const supabase = supabaseBrowser();
 
 const Repayments = () => {
   const { user } = useAuth();

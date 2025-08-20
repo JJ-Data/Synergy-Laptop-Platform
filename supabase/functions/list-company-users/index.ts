@@ -1,4 +1,5 @@
-import { createClient, type User } from 'https://esm.sh/@supabase/supabase-js@2'
+import type { User } from 'https://esm.sh/@supabase/supabase-js@2'
+import { supabaseAdmin } from '../../../lib/supabase/server.ts'
 
 interface UserRole {
   user_id: string
@@ -11,10 +12,7 @@ interface Profile {
   created_at: string
 }
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
+const supabase = supabaseAdmin()
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
@@ -28,7 +26,7 @@ Deno.serve(async (req) => {
     }
     const token = authHeader.replace('Bearer ', '')
 
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
     }
@@ -38,7 +36,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing companyId' }), { status: 400 })
     }
 
-    const { data: roleCheck, error: roleError } = await supabaseAdmin
+    const { data: roleCheck, error: roleError } = await supabase
       .from<UserRole>('user_roles')
       .select('role')
       .eq('user_id', user.id)
@@ -49,7 +47,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
     }
 
-    const { data: userRoles, error: rolesError } = await supabaseAdmin
+    const { data: userRoles, error: rolesError } = await supabase
       .from<UserRole>('user_roles')
       .select('user_id, role')
       .eq('company_id', companyId)
@@ -61,13 +59,13 @@ Deno.serve(async (req) => {
 
     const userIds = userRoles.map((r) => r.user_id)
 
-    const { data: profiles, error: profilesError } = await supabaseAdmin
+    const { data: profiles, error: profilesError } = await supabase
       .from<Profile>('profiles')
       .select('id, display_name, created_at')
       .in('id', userIds)
     if (profilesError) throw profilesError
 
-    const { data: authUsersData, error: authUsersError } = await supabaseAdmin.auth.admin.listUsers()
+    const { data: authUsersData, error: authUsersError } = await supabase.auth.admin.listUsers()
     if (authUsersError) throw authUsersError
     const authUsers: User[] = authUsersData?.users ?? []
 

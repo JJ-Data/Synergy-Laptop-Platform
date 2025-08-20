@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { parse } from "papaparse";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Upload, FileText, CheckCircle, XCircle } from "lucide-react";
+
+const supabase = supabaseBrowser();
 
 export const BulkEmployeeUpload = ({ companyId }: { companyId: string }) => {
   const [file, setFile] = useState<File | null>(null);

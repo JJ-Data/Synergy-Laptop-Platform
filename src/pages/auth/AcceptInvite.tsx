@@ -1,7 +1,7 @@
 // src/pages/auth/AcceptInvite.tsx (Simplified Version)
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { InvitationService } from "@/services/invitationService";
 import {
@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Loader2, CheckCircle, XCircle, Mail } from "lucide-react";
+
+const supabase = supabaseBrowser();
 
 const AcceptInvite = () => {
   const [params] = useSearchParams();

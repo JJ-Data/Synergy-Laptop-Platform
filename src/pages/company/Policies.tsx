@@ -22,7 +22,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -32,6 +32,8 @@ import { toast } from "sonner";
 import { Settings, Calculator, Plus, Save, AlertTriangle } from "lucide-react";
 import type { Tables } from "@/lib/supabase/types";
 import { calculateMonthlyPayment } from "@/lib/finance";
+
+const supabase = supabaseBrowser();
 
 const policySchema = z.object({
   max_amount_cents: z.coerce.number().min(1000000, "Minimum amount is ₦10,000"), // ₦10k minimum

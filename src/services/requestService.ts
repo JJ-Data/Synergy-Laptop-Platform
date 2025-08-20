@@ -1,6 +1,8 @@
 // src/services/requestService.ts
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { toast } from "sonner";
+
+const supabase = supabaseBrowser();
 
 export interface LaptopRequest {
   id: string;

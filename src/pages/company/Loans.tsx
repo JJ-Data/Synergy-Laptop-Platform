@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -32,6 +32,8 @@ import { calculateLoanProgress } from "@/lib/finance";
 import LoanTable from "@/components/company/LoanTable";
 import LoanDetailsDialog from "@/components/company/LoanDetailsDialog";
 import type { LoanWithDetails, RepaymentWithDetails } from "@/types/loan";
+
+const supabase = supabaseBrowser();
 
 const Loans = () => {
   const { companyId, company } = useCompany();

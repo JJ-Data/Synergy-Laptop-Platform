@@ -19,7 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { toast } from "sonner";
 import {
@@ -30,6 +30,8 @@ import {
   Loader2,
 } from "lucide-react";
 import type { Tables } from "@/lib/supabase/types";
+
+const supabase = supabaseBrowser();
 
 function computeMonthly(
   principal: number,
