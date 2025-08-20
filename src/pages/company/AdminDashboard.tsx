@@ -23,7 +23,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -34,7 +33,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
@@ -43,7 +41,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Upload,
+  Users,
+  FileText,
+  BarChart3,
+  Mail,
+} from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 const laptopSchema = z.object({
@@ -56,12 +64,19 @@ const laptopSchema = z.object({
   image_url: z.string().url().optional().or(z.literal("")),
 });
 
+const inviteSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
 type LaptopFormData = z.infer<typeof laptopSchema>;
+type InviteFormData = z.infer<typeof inviteSchema>;
 
 const AdminDashboard = () => {
   const { companyId } = useCompany();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLaptopDialogOpen, setIsLaptopDialogOpen] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [editingLaptop, setEditingLaptop] = useState<Tables<"laptops"> | null>(
     null
   );
@@ -77,6 +92,44 @@ const AdminDashboard = () => {
       price_cents: 0,
       image_url: "",
     },
+  });
+
+  const inviteForm = useForm<InviteFormData>({
+    resolver: zodResolver(inviteSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
+
+  // Fetch pending requests count
+  const { data: pendingRequestsCount } = useQuery({
+    queryKey: ["pending-requests-count", companyId],
+    queryFn: async () => {
+      if (!companyId) return 0;
+      const { count, error } = await supabase
+        .from("requests")
+        .select("*", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .eq("status", "pending");
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!companyId,
+  });
+
+  // Fetch company users count
+  const { data: usersCount } = useQuery({
+    queryKey: ["users-count", companyId],
+    queryFn: async () => {
+      if (!companyId) return 0;
+      const { count, error } = await supabase
+        .from("user_roles")
+        .select("*", { count: "exact", head: true })
+        .eq("company_id", companyId);
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!companyId,
   });
 
   const { data: policy, isLoading: loadingPolicy } = useQuery({
@@ -110,6 +163,31 @@ const AdminDashboard = () => {
     enabled: !!companyId,
   });
 
+  // Invite employee mutation
+  const inviteMutation = useMutation({
+    mutationFn: async (data: InviteFormData) => {
+      if (!companyId) throw new Error("No company selected");
+
+      const { data: result, error } = await supabase.rpc("create_invitation", {
+        _email: data.email,
+        _role: "employee",
+        _company_id: companyId,
+      });
+
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users-count"] });
+      toast.success("Employee invitation sent successfully!");
+      setIsInviteDialogOpen(false);
+      inviteForm.reset();
+    },
+    onError: (error) => {
+      toast.error("Failed to send invitation: " + error.message);
+    },
+  });
+
   const createLaptopMutation = useMutation({
     mutationFn: async (data: LaptopFormData) => {
       if (!companyId) throw new Error("No company selected");
@@ -122,7 +200,7 @@ const AdminDashboard = () => {
           cpu: data.cpu || null,
           ram_gb: data.ram_gb,
           storage_gb: data.storage_gb,
-          price_cents: Math.round(data.price_cents * 100), // Convert to cents
+          price_cents: Math.round(data.price_cents * 100),
           image_url: data.image_url || null,
         },
       ]);
@@ -210,7 +288,7 @@ const AdminDashboard = () => {
       cpu: laptop.cpu || "",
       ram_gb: laptop.ram_gb || 8,
       storage_gb: laptop.storage_gb || 256,
-      price_cents: Math.round((laptop.price_cents || 0) / 100), // Convert from cents
+      price_cents: Math.round((laptop.price_cents || 0) / 100),
       image_url: laptop.image_url || "",
     });
     setIsLaptopDialogOpen(true);
@@ -222,6 +300,10 @@ const AdminDashboard = () => {
     } else {
       createLaptopMutation.mutate(data);
     }
+  };
+
+  const onSubmitInvite = (data: InviteFormData) => {
+    inviteMutation.mutate(data);
   };
 
   const isSubmitting =
@@ -298,14 +380,52 @@ const AdminDashboard = () => {
             <CardDescription>Common administrative tasks</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button variant="outline" className="w-full justify-start">
-              <Upload className="mr-2 h-4 w-4" />
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setIsInviteDialogOpen(true)}
+            >
+              <Mail className="mr-2 h-4 w-4" />
               Invite Employees
+              {usersCount !== undefined && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {usersCount} users
+                </span>
+              )}
             </Button>
-            <Button variant="outline" className="w-full justify-start">
+
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => navigate("/admin/requests")}
+            >
+              <FileText className="mr-2 h-4 w-4" />
               View Pending Requests
+              {pendingRequestsCount !== undefined &&
+                pendingRequestsCount > 0 && (
+                  <span className="ml-auto bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                    {pendingRequestsCount}
+                  </span>
+                )}
             </Button>
-            <Button variant="outline" className="w-full justify-start">
+
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => navigate("/admin/users")}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Manage Users
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                toast.info("Reports feature coming soon!");
+              }}
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
               Generate Reports
             </Button>
           </CardContent>
@@ -415,6 +535,52 @@ const AdminDashboard = () => {
             ))}
         </div>
       </section>
+
+      {/* Employee Invite Dialog */}
+      <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Employee</DialogTitle>
+            <DialogDescription>
+              Send an invitation to a new employee to join your company
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...inviteForm}>
+            <form
+              onSubmit={inviteForm.handleSubmit(onSubmitInvite)}
+              className="space-y-4"
+            >
+              <FormField
+                control={inviteForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="employee@company.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsInviteDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={inviteMutation.isPending}>
+                  {inviteMutation.isPending ? "Sending..." : "Send Invitation"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Laptop Form Dialog */}
       <Dialog open={isLaptopDialogOpen} onOpenChange={setIsLaptopDialogOpen}>
