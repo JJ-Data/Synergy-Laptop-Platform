@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+// Simplified AcceptInvite.tsx for debugging
+// Replace your current AcceptInvite component with this version
+// This focuses on core functionality and better error handling
+
+import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -14,34 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import {
-  Loader2,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Shield,
-  Building,
-  Mail,
-  Eye,
-  EyeOff,
-} from "lucide-react";
-
-type InvitationStatus =
-  | "checking"
-  | "needs-auth"
-  | "accepting"
-  | "success"
-  | "error";
-
-interface InviteDetails {
-  email: string;
-  role: string;
-  company_id: string;
-  company_name: string;
-  expires_at: string;
-}
+import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 const AcceptInvite = () => {
   const [params] = useSearchParams();
@@ -49,91 +27,110 @@ const AcceptInvite = () => {
   const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState<InvitationStatus>("checking");
+  const [status, setStatus] = useState<
+    "checking" | "needs-auth" | "accepting" | "success" | "error"
+  >("checking");
   const [message, setMessage] = useState<string>("");
-  const [inviteDetails, setInviteDetails] = useState<InviteDetails | null>(
-    null
-  );
-  const [acceptProgress, setAcceptProgress] = useState(0);
+  const [inviteDetails, setInviteDetails] = useState<any>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
-  // Form state for signup/signin
+  // Form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const dashboardPath = useMemo(() => {
-    if (!user) return "/";
-    if (user.role === "super_admin") return "/super";
-    if (user.role === "admin") return "/admin";
-    return "/employee";
-  }, [user]);
+  // Debug: Log all steps
+  const debugLog = (step: string, data: any) => {
+    console.log(`DEBUG [${step}]:`, data);
+    setDebugInfo((prev) => ({ ...prev, [step]: data }));
+  };
 
-  // Enhanced invitation validation
   useEffect(() => {
     const checkInvitation = async () => {
+      debugLog("1. Starting validation", { token });
+
       if (!token) {
         setStatus("error");
-        setMessage(
-          "Invalid invitation link. Please check the URL and try again."
-        );
+        setMessage("No invitation token found in the URL.");
         return;
       }
 
       try {
         setStatus("checking");
 
-        // Use the enhanced validation function
-        const { data, error } = await supabase.rpc(
-          "validate_invitation_token",
-          {
-            _token: token,
-          }
-        );
+        // First, check if invitation exists in database
+        debugLog("2. Checking invitation in database", { token });
+        const { data: invitation, error: inviteError } = await supabase
+          .from("invitations")
+          .select("*")
+          .eq("token", token)
+          .maybeSingle();
 
-        if (error) {
-          console.error("Error validating token:", error);
+        debugLog("3. Database result", { invitation, inviteError });
+
+        if (inviteError) {
           setStatus("error");
-          setMessage(
-            "Failed to validate invitation. Please try again or contact support."
-          );
+          setMessage("Database error: " + inviteError.message);
           return;
         }
 
-        if (!data || !data.valid) {
+        if (!invitation) {
           setStatus("error");
-          setMessage(
-            data?.error || "This invitation link is invalid or has expired."
-          );
+          setMessage("Invitation not found. The link may be invalid.");
           return;
         }
 
-        // Store invitation details
-        const details: InviteDetails = {
-          email: data.email,
-          role: data.role,
-          company_id: data.company_id,
-          company_name: data.company_name,
-          expires_at: data.expires_at,
+        // Check if already accepted
+        if (invitation.accepted_at) {
+          setStatus("error");
+          setMessage("This invitation has already been accepted.");
+          return;
+        }
+
+        // Check if expired
+        const now = new Date();
+        const expiresAt = new Date(invitation.expires_at);
+        if (now > expiresAt) {
+          setStatus("error");
+          setMessage("This invitation has expired.");
+          return;
+        }
+
+        // Get company info
+        const { data: company } = await supabase
+          .from("companies")
+          .select("name")
+          .eq("id", invitation.company_id)
+          .single();
+
+        const details = {
+          email: invitation.email,
+          role: invitation.role,
+          company_id: invitation.company_id,
+          company_name: company?.name || "Unknown Company",
+          expires_at: invitation.expires_at,
         };
 
+        debugLog("4. Invitation details", details);
         setInviteDetails(details);
         setEmail(details.email);
 
         // Check if user is authenticated
-        if (!user) {
+        const {
+          data: { user: currentUser },
+        } = await supabase.auth.getUser();
+        debugLog("5. Current user", { currentUser });
+
+        if (!currentUser) {
           setStatus("needs-auth");
         } else {
           // User is logged in, check if email matches
-          const {
-            data: { user: currentUser },
-          } = await supabase.auth.getUser();
-          if (currentUser?.email !== details.email) {
+          if (currentUser.email !== details.email) {
             setStatus("error");
             setMessage(
-              `This invitation is for ${details.email}. Please sign out and sign in with the correct email address.`
+              `This invitation is for ${details.email}. Please sign out and sign in with the correct email.`
             );
             return;
           }
@@ -141,11 +138,10 @@ const AcceptInvite = () => {
           acceptInvitation();
         }
       } catch (err: any) {
+        debugLog("ERROR in checkInvitation", err);
         console.error("Invitation check error:", err);
         setStatus("error");
-        setMessage(
-          "Something went wrong. Please try again or contact support."
-        );
+        setMessage("Failed to validate invitation: " + err.message);
       }
     };
 
@@ -155,52 +151,42 @@ const AcceptInvite = () => {
   const acceptInvitation = async () => {
     if (!token) return;
 
+    debugLog("6. Starting acceptance", { token });
     setStatus("accepting");
-    setAcceptProgress(20);
 
     try {
-      // Progress simulation for better UX
-      const progressInterval = setInterval(() => {
-        setAcceptProgress((prev) => Math.min(prev + 15, 80));
-      }, 200);
-
       const { data, error } = await supabase.rpc("accept_invitation", {
         _token: token,
       });
 
-      clearInterval(progressInterval);
-      setAcceptProgress(100);
+      debugLog("7. Accept invitation result", { data, error });
 
       if (error) {
         console.error("Error accepting invitation:", error);
         setStatus("error");
-        setMessage(
-          error.message || "Failed to accept invitation. Please try again."
-        );
+        setMessage("Failed to accept invitation: " + error.message);
         return;
       }
 
       if (data !== true) {
         setStatus("error");
-        setMessage(
-          "Failed to accept invitation. Please try again or contact support."
-        );
+        setMessage("Failed to accept invitation. Unexpected response.");
         return;
       }
 
       setStatus("success");
-      toast.success("Welcome to your new role!");
+      toast.success("Invitation accepted successfully!");
 
       // Redirect after a short delay
       setTimeout(() => {
-        window.location.href = dashboardPath;
+        // Force page reload to refresh user context
+        window.location.href = "/admin"; // or wherever they should go
       }, 2000);
     } catch (err: any) {
+      debugLog("ERROR in acceptInvitation", err);
       console.error("Accept invitation error:", err);
       setStatus("error");
-      setMessage(
-        err.message || "An unexpected error occurred. Please try again."
-      );
+      setMessage("An error occurred: " + err.message);
     }
   };
 
@@ -218,6 +204,8 @@ const AcceptInvite = () => {
     }
 
     setIsSubmitting(true);
+    debugLog("8. Starting authentication", { email, isSignUp });
+
     try {
       if (isSignUp) {
         const { data, error } = await supabase.auth.signUp({
@@ -227,6 +215,8 @@ const AcceptInvite = () => {
             emailRedirectTo: `${window.location.origin}/accept-invite?token=${token}`,
           },
         });
+
+        debugLog("9. SignUp result", { data, error });
 
         if (error) {
           toast.error(error.message);
@@ -246,13 +236,17 @@ const AcceptInvite = () => {
           password: password,
         });
 
+        debugLog("10. SignIn result", { data, error });
+
         if (error) {
           toast.error(error.message);
         } else {
           toast.success("Signed in successfully!");
+          // The useEffect will trigger and accept the invitation
         }
       }
     } catch (err: any) {
+      debugLog("ERROR in handleAuth", err);
       console.error("Auth error:", err);
       toast.error(err.message || "Authentication failed");
     } finally {
@@ -260,36 +254,10 @@ const AcceptInvite = () => {
     }
   };
 
-  const getRoleInfo = (role: string) => {
-    switch (role) {
-      case "admin":
-        return {
-          icon: Building,
-          title: "Company Administrator",
-          description: "Manage laptops, policies, and employee requests",
-          color: "text-blue-600",
-        };
-      case "super_admin":
-        return {
-          icon: Shield,
-          title: "Super Administrator",
-          description: "Manage companies and platform-wide settings",
-          color: "text-purple-600",
-        };
-      default:
-        return {
-          icon: Mail,
-          title: "Employee",
-          description: "Request financing and manage repayments",
-          color: "text-green-600",
-        };
-    }
-  };
-
   // Loading state
   if (status === "checking") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -303,7 +271,7 @@ const AcceptInvite = () => {
   // Error state
   if (status === "error") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <Seo title="Accept Invitation - Error" />
         <Card className="w-full max-w-lg">
           <CardHeader>
@@ -317,6 +285,15 @@ const AcceptInvite = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{message}</AlertDescription>
             </Alert>
+
+            {/* Debug Information */}
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Debug Information</summary>
+              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </details>
+
             <div className="flex gap-3">
               <Button asChild variant="outline" className="flex-1">
                 <Link to="/">Go to Home</Link>
@@ -333,39 +310,20 @@ const AcceptInvite = () => {
 
   // Success state
   if (status === "success") {
-    const roleInfo = inviteDetails ? getRoleInfo(inviteDetails.role) : null;
-
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <Seo title="Invitation Accepted" />
         <Card className="w-full max-w-lg">
-          <CardContent className="flex flex-col items-center py-8 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-3">Welcome Aboard!</h2>
-
-            {roleInfo && (
-              <div className="bg-muted rounded-lg p-4 mb-4 w-full">
-                <div className="flex items-center gap-3 mb-2">
-                  <roleInfo.icon className={`h-5 w-5 ${roleInfo.color}`} />
-                  <span className="font-medium">{roleInfo.title}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {roleInfo.description}
-                </p>
-              </div>
-            )}
-
-            <p className="text-muted-foreground mb-6">
-              You now have access to{" "}
-              <strong>{inviteDetails?.company_name}</strong>
+          <CardContent className="flex flex-col items-center py-8">
+            <CheckCircle className="h-12 w-12 text-green-600 mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Invitation Accepted!</h2>
+            <p className="text-muted-foreground text-center mb-4">
+              You now have {inviteDetails?.role} access to{" "}
+              {inviteDetails?.company_name}.
             </p>
-
-            <div className="text-sm text-muted-foreground mb-4">
-              Redirecting to your dashboard...
-            </div>
-            <Progress value={100} className="w-full h-2" />
+            <p className="text-sm text-muted-foreground">
+              Redirecting to dashboard...
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -375,31 +333,20 @@ const AcceptInvite = () => {
   // Accepting state
   if (status === "accepting") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground mb-4">
-              Setting up your access...
-            </p>
-            <Progress value={acceptProgress} className="w-full h-2" />
+            <p className="text-muted-foreground">Accepting invitation...</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Enhanced needs authentication state
-  const roleInfo = inviteDetails ? getRoleInfo(inviteDetails.role) : null;
-  const daysUntilExpiry = inviteDetails
-    ? Math.ceil(
-        (new Date(inviteDetails.expires_at).getTime() - new Date().getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : 0;
-
+  // Needs authentication state
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted">
       <Seo
         title="Accept Invitation"
         description="Accept your invitation to join the platform."
@@ -407,50 +354,15 @@ const AcceptInvite = () => {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            You're Invited!
-          </CardTitle>
+          <CardTitle>You're Invited!</CardTitle>
           <CardDescription>
-            {inviteDetails && (
-              <>
-                Join <strong>{inviteDetails.company_name}</strong> as{" "}
-                {roleInfo && (
-                  <span className={roleInfo.color}>
-                    {roleInfo.title.toLowerCase()}
-                  </span>
-                )}
-              </>
-            )}
+            You've been invited to join{" "}
+            <strong>{inviteDetails?.company_name || "our platform"}</strong> as{" "}
+            <strong>{inviteDetails?.role}</strong>.
           </CardDescription>
         </CardHeader>
-
-        <CardContent className="space-y-6">
-          {/* Role Information */}
-          {roleInfo && (
-            <div className="bg-muted rounded-lg p-4">
-              <div className="flex items-center gap-3 mb-2">
-                <roleInfo.icon className={`h-5 w-5 ${roleInfo.color}`} />
-                <span className="font-medium">{roleInfo.title}</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {roleInfo.description}
-              </p>
-            </div>
-          )}
-
-          {/* Expiry Warning */}
-          {daysUntilExpiry <= 2 && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                This invitation expires in {daysUntilExpiry} day
-                {daysUntilExpiry !== 1 ? "s" : ""}!
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <Alert>
+        <CardContent>
+          <Alert className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {isSignUp
@@ -477,29 +389,14 @@ const AcceptInvite = () => {
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+              />
             </div>
 
             {isSignUp && (
@@ -545,6 +442,14 @@ const AcceptInvite = () => {
               </button>
             </div>
           </form>
+
+          {/* Debug Information */}
+          <details className="mt-4 text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Debug Information</summary>
+            <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </details>
         </CardContent>
       </Card>
     </div>
