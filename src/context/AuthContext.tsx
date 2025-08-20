@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
+const supabase = supabaseBrowser();
 
 export type Role = "super_admin" | "admin" | "employee";
 

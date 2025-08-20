@@ -14,7 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import {
   Calendar,
@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import type { Tables } from "@/lib/supabase/types";
 import { calculateLoanProgress } from "@/lib/finance";
+
+const supabase = supabaseBrowser();
 
 // Enhanced types
 type LoanWithDetails = {

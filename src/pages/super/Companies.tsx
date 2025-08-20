@@ -49,9 +49,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { Tables, TablesInsert } from "@/lib/supabase/types";
+
+const supabase = supabaseBrowser();
 
 const companySchema = z.object({
   name: z.string().min(2, "Name is required"),

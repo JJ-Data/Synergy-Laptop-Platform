@@ -10,8 +10,10 @@ import {
 } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
+
+const supabase = supabaseBrowser();
 
 // Loading component
 const LoadingSpinner = ({ size = "md" }: { size?: "sm" | "md" | "lg" }) => {

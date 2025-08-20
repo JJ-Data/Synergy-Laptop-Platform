@@ -9,8 +9,9 @@ export default defineConfig({
   },
   plugins: [react()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: "@/lib/supabase", replacement: path.resolve(__dirname, "./lib/supabase") },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
 });
