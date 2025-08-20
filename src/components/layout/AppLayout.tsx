@@ -87,9 +87,14 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
                   Logout
                 </Button>
               ) : (
-                <Button asChild variant="hero" size="sm">
-                  <Link to="/login">Login</Link>
-                </Button>
+                <>
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/(auth)/login">Login</Link>
+                  </Button>
+                  <Button asChild variant="hero" size="sm">
+                    <Link to="/(auth)/register">Register</Link>
+                  </Button>
+                </>
               )}
             </div>
             <div className="md:hidden">
@@ -121,16 +126,28 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
                         </Button>
                       </SheetClose>
                     ) : (
-                      <SheetClose asChild>
-                        <Button
-                          asChild
-                          variant="hero"
-                          size="sm"
-                          className="mt-4"
-                        >
-                          <Link to="/login">Login</Link>
-                        </Button>
-                      </SheetClose>
+                      <>
+                        <SheetClose asChild>
+                          <Button
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="mt-4"
+                          >
+                            <Link to="/(auth)/login">Login</Link>
+                          </Button>
+                        </SheetClose>
+                        <SheetClose asChild>
+                          <Button
+                            asChild
+                            variant="hero"
+                            size="sm"
+                            className="mt-2"
+                          >
+                            <Link to="/(auth)/register">Register</Link>
+                          </Button>
+                        </SheetClose>
+                      </>
                     )}
                   </nav>
                 </SheetContent>

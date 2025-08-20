@@ -39,10 +39,13 @@ const Index = () => {
                 size="lg"
                 className="relative overflow-hidden"
               >
-                <Link to="/login">
+                <Link to="/(auth)/register">
                   <span className="pointer-events-none absolute inset-y-0 left-[-100%] w-1/3 bg-foreground/10 blur-md animate-shine" />
                   Get Started
                 </Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link to="/(auth)/login">Login</Link>
               </Button>
               <Button asChild variant="outline" size="lg">
                 <a href="#features">Explore Features</a>
