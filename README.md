@@ -69,6 +69,12 @@ The project requires Supabase credentials to be set in your environment files:
 
 Define these in `.env`, `.env.development`, `.env.production`, and any other environment-specific files.
 
+For a Next.js setup, corresponding variables are provided in `.env.local.example`:
+
+- `NEXT_PUBLIC_SUPABASE_URL` – client-side Supabase URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` – client-side anon key
+- `SUPABASE_SERVICE_ROLE_KEY` – **server only** key used by `src/lib/supabase/server.ts`
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/0a4598ef-3430-42ad-88ff-ce88e15d1104) and click on Share -> Publish.
