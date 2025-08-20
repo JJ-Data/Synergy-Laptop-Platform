@@ -1,3 +1,6 @@
+// src/pages/super/Companies.tsx
+// Complete updated file with enhanced invitation system
+
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -14,6 +17,8 @@ import {
   ExternalLink,
   Clock,
   CheckCircle,
+  Send,
+  AlertCircle,
 } from "lucide-react";
 
 import AppLayout from "@/components/layout/AppLayout";
@@ -68,6 +73,8 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 
@@ -78,6 +85,8 @@ const companySchema = z.object({
 
 const inviteSchema = z.object({
   email: z.string().email("Invalid email address"),
+  sendEmail: z.boolean().default(true),
+  personalMessage: z.string().optional(),
 });
 
 type CompanyForm = z.infer<typeof companySchema>;
@@ -102,7 +111,11 @@ const Companies = () => {
   const [editing, setEditing] = useState<Tables<"companies"> | null>(null);
   const [toDelete, setToDelete] = useState<Tables<"companies"> | null>(null);
   const [inviteFor, setInviteFor] = useState<Tables<"companies"> | null>(null);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [invitationSent, setInvitationSent] = useState(false);
+  const [invitationDetails, setInvitationDetails] = useState<{
+    token: string;
+    link: string;
+  } | null>(null);
   const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set());
 
   const form = useForm<CompanyForm>({
@@ -112,7 +125,11 @@ const Companies = () => {
 
   const inviteForm = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "" },
+    defaultValues: {
+      email: "",
+      sendEmail: true,
+      personalMessage: "",
+    },
   });
 
   const { data, isLoading } = useQuery({
@@ -196,29 +213,66 @@ const Companies = () => {
     onError: (e: any) => toast.error(e.message || "Failed to delete company"),
   });
 
+  // Enhanced invitation mutation with email support
   const inviteMutation = useMutation({
-    mutationFn: async ({
-      email,
-      companyId,
-    }: {
-      email: string;
-      companyId: string;
-    }) => {
-      const { data, error } = await supabase.rpc("create_invitation", {
-        _email: email,
+    mutationFn: async (data: InviteForm) => {
+      if (!inviteFor) throw new Error("No company selected");
+
+      // Create invitation
+      const { data: token, error } = await supabase.rpc("create_invitation", {
+        _email: data.email,
         _role: "admin",
-        _company_id: companyId,
+        _company_id: inviteFor.id,
       });
+
       if (error) throw error;
-      return data as string;
+
+      const invitationLink = `${window.location.origin}/accept-invite?token=${token}`;
+
+      // Send email if requested
+      if (data.sendEmail) {
+        try {
+          const { data: emailResult, error: emailError } =
+            await supabase.functions.invoke("send-invitation-email", {
+              body: {
+                email: data.email,
+                token,
+                companyName: inviteFor.name,
+                inviterName: "Super Admin", // You can get this from user context
+                personalMessage: data.personalMessage,
+              },
+            });
+
+          if (emailError) {
+            console.warn("Email sending failed:", emailError);
+            toast.warning(
+              "Invitation created but email sending failed. Please share the link manually."
+            );
+          }
+        } catch (emailErr) {
+          console.warn("Email service unavailable:", emailErr);
+          toast.warning(
+            "Invitation created but email service unavailable. Please share the link manually."
+          );
+        }
+      }
+
+      return { token, link: invitationLink };
     },
-    onSuccess: (token) => {
-      setInviteToken(token);
+    onSuccess: (data) => {
+      setInvitationDetails(data);
+      setInvitationSent(true);
       qc.invalidateQueries({ queryKey: ["recent-invitations"] });
-      toast.success("Admin invitation created successfully!");
+
+      if (inviteForm.watch("sendEmail")) {
+        toast.success("Invitation sent successfully!");
+      } else {
+        toast.success("Invitation created successfully!");
+      }
     },
-    onError: (e: any) =>
-      toast.error(e.message || "Failed to create invitation"),
+    onError: (error) => {
+      toast.error("Failed to create invitation: " + error.message);
+    },
   });
 
   const copyToClipboard = async (text: string, itemId: string) => {
@@ -254,14 +308,20 @@ const Companies = () => {
 
   const startInvite = (company: Tables<"companies">) => {
     setInviteFor(company);
-    setInviteToken(null);
-    inviteForm.reset({ email: "" });
+    setInvitationSent(false);
+    setInvitationDetails(null);
+    inviteForm.reset({
+      email: "",
+      sendEmail: true,
+      personalMessage: "",
+    });
   };
 
   const closeInviteDialog = () => {
     setInviteFor(null);
-    setInviteToken(null);
-    inviteForm.reset({ email: "" });
+    setInvitationSent(false);
+    setInvitationDetails(null);
+    inviteForm.reset();
   };
 
   const onSubmit = (values: CompanyForm) => {
@@ -274,8 +334,7 @@ const Companies = () => {
   };
 
   const onInviteSubmit = (values: InviteForm) => {
-    if (!inviteFor) return;
-    inviteMutation.mutate({ email: values.email, companyId: inviteFor.id });
+    inviteMutation.mutate(values);
   };
 
   const getInvitationStatus = (invitation: InvitationWithCompany) => {
@@ -497,14 +556,19 @@ const Companies = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Invite Company Administrator</DialogTitle>
+            <DialogTitle>
+              {invitationSent
+                ? "Invitation Sent!"
+                : "Invite Company Administrator"}
+            </DialogTitle>
             <DialogDescription>
-              Send an invitation to assign an admin for{" "}
-              <strong>{inviteFor?.name}</strong>
+              {invitationSent
+                ? `Admin invitation for ${inviteFor?.name} has been processed`
+                : `Send an invitation to assign an admin for ${inviteFor?.name}`}
             </DialogDescription>
           </DialogHeader>
 
-          {!inviteToken ? (
+          {!invitationSent ? (
             <Form {...inviteForm}>
               <form
                 onSubmit={inviteForm.handleSubmit(onInviteSubmit)}
@@ -532,6 +596,50 @@ const Companies = () => {
                   )}
                 />
 
+                <FormField
+                  control={inviteForm.control}
+                  name="sendEmail"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Send email invitation</FormLabel>
+                        <FormDescription>
+                          Automatically send invitation email with setup
+                          instructions
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {inviteForm.watch("sendEmail") && (
+                  <FormField
+                    control={inviteForm.control}
+                    name="personalMessage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Personal Message (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Welcome to the team! Let me know if you need help."
+                            {...field}
+                            disabled={inviteMutation.isPending}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Add a personal note to the invitation email
+                        </FormDescription>
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 <DialogFooter>
                   <Button
                     type="button"
@@ -542,20 +650,28 @@ const Companies = () => {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={inviteMutation.isPending}>
-                    {inviteMutation.isPending
-                      ? "Creating..."
-                      : "Send Invitation"}
+                    {inviteMutation.isPending ? (
+                      <>Creating...</>
+                    ) : inviteForm.watch("sendEmail") ? (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Send Invitation
+                      </>
+                    ) : (
+                      "Create Invitation"
+                    )}
                   </Button>
                 </DialogFooter>
               </form>
             </Form>
           ) : (
-            <InviteSuccess
-              token={inviteToken}
+            <InvitationSuccess
+              details={invitationDetails!}
               companyName={inviteFor?.name || ""}
-              onClose={closeInviteDialog}
+              emailSent={inviteForm.getValues("sendEmail")}
               copyToClipboard={copyToClipboard}
               copiedItems={copiedItems}
+              onClose={closeInviteDialog}
             />
           )}
         </DialogContent>
@@ -652,115 +768,87 @@ const Companies = () => {
   );
 };
 
-// Enhanced success component
-function InviteSuccess({
-  token,
+// Success component
+const InvitationSuccess: React.FC<{
+  details: { token: string; link: string };
+  companyName: string;
+  emailSent: boolean;
+  copyToClipboard: (text: string, itemId: string) => void;
+  copiedItems: Set<string>;
+  onClose: () => void;
+}> = ({
+  details,
   companyName,
-  onClose,
+  emailSent,
   copyToClipboard,
   copiedItems,
-}: {
-  token: string;
-  companyName: string;
-  onClose: () => void;
-  copyToClipboard: (text: string, itemId: string) => Promise<void>;
-  copiedItems: Set<string>;
-}) {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const link = `${origin}/accept-invite?token=${token}`;
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="h-6 w-6 text-green-600" />
-        </div>
-        <h3 className="text-lg font-semibold">Invitation Created!</h3>
-        <p className="text-muted-foreground mt-1">
-          Admin invitation for <strong>{companyName}</strong> is ready to share
-        </p>
+  onClose,
+}) => (
+  <div className="space-y-6">
+    <div className="text-center">
+      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        {emailSent ? (
+          <Mail className="h-6 w-6 text-green-600" />
+        ) : (
+          <Check className="h-6 w-6 text-green-600" />
+        )}
       </div>
-
-      <div className="space-y-4">
-        <div>
-          <Label className="text-sm font-medium">Invitation Link</Label>
-          <div className="flex gap-2 mt-1">
-            <Input
-              readOnly
-              value={link}
-              className="font-mono text-sm"
-              aria-label="Invitation link"
-            />
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => copyToClipboard(link, "link")}
-              className="flex-shrink-0"
-            >
-              {copiedItems.has("link") ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Share this link with the administrator
-          </p>
-        </div>
-
-        <Separator />
-
-        <div>
-          <Label className="text-sm font-medium">Token</Label>
-          <div className="flex gap-2 mt-1">
-            <Input
-              readOnly
-              value={token}
-              className="font-mono text-sm"
-              aria-label="Invitation token"
-            />
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => copyToClipboard(token, "token")}
-              className="flex-shrink-0"
-            >
-              {copiedItems.has("token") ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Alternative: Provide token directly
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex gap-3">
-          <ExternalLink className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-blue-900">
-              What happens next?
-            </p>
-            <p className="text-sm text-blue-700 mt-1">
-              The administrator will receive the link, create their account, and
-              gain admin access to {companyName}.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <DialogFooter>
-        <Button onClick={onClose} className="w-full">
-          Done
-        </Button>
-      </DialogFooter>
+      <h3 className="text-lg font-semibold">
+        {emailSent ? "Email Sent!" : "Invitation Ready!"}
+      </h3>
+      <p className="text-muted-foreground mt-1">
+        {emailSent
+          ? `Admin invitation email has been sent for ${companyName}`
+          : `Admin invitation for ${companyName} is ready to share`}
+      </p>
     </div>
-  );
-}
+
+    {emailSent && (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="flex gap-3">
+          <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-green-900">
+              Email delivered
+            </p>
+            <p className="text-sm text-green-700 mt-1">
+              The administrator will receive setup instructions and can accept
+              the invitation directly from their email.
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div>
+      <Label className="text-sm font-medium">Backup invitation link</Label>
+      <div className="flex gap-2 mt-1">
+        <Input readOnly value={details.link} className="font-mono text-sm" />
+        <Button
+          variant="outline"
+          onClick={() => copyToClipboard(details.link, "link")}
+          className="flex-shrink-0"
+        >
+          {copiedItems.has("link") ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">
+        {emailSent
+          ? "Share this as backup if email delivery fails"
+          : "Share this link with the administrator"}
+      </p>
+    </div>
+
+    <DialogFooter>
+      <Button onClick={onClose} className="w-full">
+        Done
+      </Button>
+    </DialogFooter>
+  </div>
+);
 
 export default Companies;

@@ -14,8 +14,34 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Shield,
+  Building,
+  Mail,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+
+type InvitationStatus =
+  | "checking"
+  | "needs-auth"
+  | "accepting"
+  | "success"
+  | "error";
+
+interface InviteDetails {
+  email: string;
+  role: string;
+  company_id: string;
+  company_name: string;
+  expires_at: string;
+}
 
 const AcceptInvite = () => {
   const [params] = useSearchParams();
@@ -23,16 +49,18 @@ const AcceptInvite = () => {
   const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState<
-    "checking" | "needs-auth" | "accepting" | "success" | "error"
-  >("checking");
+  const [status, setStatus] = useState<InvitationStatus>("checking");
   const [message, setMessage] = useState<string>("");
-  const [inviteDetails, setInviteDetails] = useState<any>(null);
+  const [inviteDetails, setInviteDetails] = useState<InviteDetails | null>(
+    null
+  );
+  const [acceptProgress, setAcceptProgress] = useState(0);
 
   // Form state for signup/signin
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -43,17 +71,21 @@ const AcceptInvite = () => {
     return "/employee";
   }, [user]);
 
-  // Check invitation validity
+  // Enhanced invitation validation
   useEffect(() => {
     const checkInvitation = async () => {
       if (!token) {
         setStatus("error");
-        setMessage("No invitation token found in the URL.");
+        setMessage(
+          "Invalid invitation link. Please check the URL and try again."
+        );
         return;
       }
 
       try {
-        // Use the public function to validate the token
+        setStatus("checking");
+
+        // Use the enhanced validation function
         const { data, error } = await supabase.rpc(
           "validate_invitation_token",
           {
@@ -64,25 +96,31 @@ const AcceptInvite = () => {
         if (error) {
           console.error("Error validating token:", error);
           setStatus("error");
-          setMessage("Failed to validate invitation.");
+          setMessage(
+            "Failed to validate invitation. Please try again or contact support."
+          );
           return;
         }
 
         if (!data || !data.valid) {
           setStatus("error");
-          setMessage(data?.error || "Invalid invitation token.");
+          setMessage(
+            data?.error || "This invitation link is invalid or has expired."
+          );
           return;
         }
 
         // Store invitation details
-        setInviteDetails({
+        const details: InviteDetails = {
           email: data.email,
           role: data.role,
           company_id: data.company_id,
           company_name: data.company_name,
           expires_at: data.expires_at,
-        });
-        setEmail(data.email);
+        };
+
+        setInviteDetails(details);
+        setEmail(details.email);
 
         // Check if user is authenticated
         if (!user) {
@@ -92,10 +130,10 @@ const AcceptInvite = () => {
           const {
             data: { user: currentUser },
           } = await supabase.auth.getUser();
-          if (currentUser?.email !== data.email) {
+          if (currentUser?.email !== details.email) {
             setStatus("error");
             setMessage(
-              `This invitation is for ${data.email}. Please sign in with that email address.`
+              `This invitation is for ${details.email}. Please sign out and sign in with the correct email address.`
             );
             return;
           }
@@ -105,7 +143,9 @@ const AcceptInvite = () => {
       } catch (err: any) {
         console.error("Invitation check error:", err);
         setStatus("error");
-        setMessage("Failed to validate invitation.");
+        setMessage(
+          "Something went wrong. Please try again or contact support."
+        );
       }
     };
 
@@ -116,37 +156,50 @@ const AcceptInvite = () => {
     if (!token) return;
 
     setStatus("accepting");
+    setAcceptProgress(20);
+
     try {
+      // Progress simulation for better UX
+      const progressInterval = setInterval(() => {
+        setAcceptProgress((prev) => Math.min(prev + 15, 80));
+      }, 200);
+
       const { data, error } = await supabase.rpc("accept_invitation", {
         _token: token,
       });
 
+      clearInterval(progressInterval);
+      setAcceptProgress(100);
+
       if (error) {
         console.error("Error accepting invitation:", error);
         setStatus("error");
-        setMessage(error.message || "Failed to accept invitation.");
+        setMessage(
+          error.message || "Failed to accept invitation. Please try again."
+        );
         return;
       }
 
       if (data !== true) {
         setStatus("error");
-        setMessage("Failed to accept invitation. Please try again.");
+        setMessage(
+          "Failed to accept invitation. Please try again or contact support."
+        );
         return;
       }
 
       setStatus("success");
-      toast.success("Invitation accepted successfully!");
+      toast.success("Welcome to your new role!");
 
       // Redirect after a short delay
       setTimeout(() => {
-        // Force a refresh to update user roles
         window.location.href = dashboardPath;
       }, 2000);
     } catch (err: any) {
       console.error("Accept invitation error:", err);
       setStatus("error");
       setMessage(
-        err.message || "An error occurred while accepting the invitation."
+        err.message || "An unexpected error occurred. Please try again."
       );
     }
   };
@@ -167,7 +220,6 @@ const AcceptInvite = () => {
     setIsSubmitting(true);
     try {
       if (isSignUp) {
-        // Sign up
         const { data, error } = await supabase.auth.signUp({
           email: email,
           password: password,
@@ -179,7 +231,6 @@ const AcceptInvite = () => {
         if (error) {
           toast.error(error.message);
         } else if (data?.user?.identities?.length === 0) {
-          // User already exists
           toast.error(
             "An account with this email already exists. Please sign in instead."
           );
@@ -190,7 +241,6 @@ const AcceptInvite = () => {
           );
         }
       } else {
-        // Sign in
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
@@ -200,7 +250,6 @@ const AcceptInvite = () => {
           toast.error(error.message);
         } else {
           toast.success("Signed in successfully!");
-          // The useEffect will trigger and accept the invitation
         }
       }
     } catch (err: any) {
@@ -211,10 +260,36 @@ const AcceptInvite = () => {
     }
   };
 
+  const getRoleInfo = (role: string) => {
+    switch (role) {
+      case "admin":
+        return {
+          icon: Building,
+          title: "Company Administrator",
+          description: "Manage laptops, policies, and employee requests",
+          color: "text-blue-600",
+        };
+      case "super_admin":
+        return {
+          icon: Shield,
+          title: "Super Administrator",
+          description: "Manage companies and platform-wide settings",
+          color: "text-purple-600",
+        };
+      default:
+        return {
+          icon: Mail,
+          title: "Employee",
+          description: "Request financing and manage repayments",
+          color: "text-green-600",
+        };
+    }
+  };
+
   // Loading state
   if (status === "checking") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -228,7 +303,7 @@ const AcceptInvite = () => {
   // Error state
   if (status === "error") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
         <Seo title="Accept Invitation - Error" />
         <Card className="w-full max-w-lg">
           <CardHeader>
@@ -239,6 +314,7 @@ const AcceptInvite = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
               <AlertDescription>{message}</AlertDescription>
             </Alert>
             <div className="flex gap-3">
@@ -257,20 +333,39 @@ const AcceptInvite = () => {
 
   // Success state
   if (status === "success") {
+    const roleInfo = inviteDetails ? getRoleInfo(inviteDetails.role) : null;
+
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
         <Seo title="Invitation Accepted" />
         <Card className="w-full max-w-lg">
-          <CardContent className="flex flex-col items-center py-8">
-            <CheckCircle className="h-12 w-12 text-green-600 mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Invitation Accepted!</h2>
-            <p className="text-muted-foreground text-center mb-4">
-              You now have {inviteDetails?.role} access to{" "}
-              {inviteDetails?.company_name}.
+          <CardContent className="flex flex-col items-center py-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-3">Welcome Aboard!</h2>
+
+            {roleInfo && (
+              <div className="bg-muted rounded-lg p-4 mb-4 w-full">
+                <div className="flex items-center gap-3 mb-2">
+                  <roleInfo.icon className={`h-5 w-5 ${roleInfo.color}`} />
+                  <span className="font-medium">{roleInfo.title}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {roleInfo.description}
+                </p>
+              </div>
+            )}
+
+            <p className="text-muted-foreground mb-6">
+              You now have access to{" "}
+              <strong>{inviteDetails?.company_name}</strong>
             </p>
-            <p className="text-sm text-muted-foreground">
-              Redirecting to dashboard...
-            </p>
+
+            <div className="text-sm text-muted-foreground mb-4">
+              Redirecting to your dashboard...
+            </div>
+            <Progress value={100} className="w-full h-2" />
           </CardContent>
         </Card>
       </div>
@@ -280,36 +375,82 @@ const AcceptInvite = () => {
   // Accepting state
   if (status === "accepting") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Accepting invitation...</p>
+            <p className="text-muted-foreground mb-4">
+              Setting up your access...
+            </p>
+            <Progress value={acceptProgress} className="w-full h-2" />
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Needs authentication state
+  // Enhanced needs authentication state
+  const roleInfo = inviteDetails ? getRoleInfo(inviteDetails.role) : null;
+  const daysUntilExpiry = inviteDetails
+    ? Math.ceil(
+        (new Date(inviteDetails.expires_at).getTime() - new Date().getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : 0;
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50">
       <Seo
         title="Accept Invitation"
         description="Accept your invitation to join the platform."
       />
+
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>Welcome!</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            You're Invited!
+          </CardTitle>
           <CardDescription>
-            You've been invited to join{" "}
-            <strong>{inviteDetails?.company_name || "our platform"}</strong> as{" "}
-            {inviteDetails?.role === "admin" ? "an" : "an"}{" "}
-            <strong>{inviteDetails?.role}</strong>.
+            {inviteDetails && (
+              <>
+                Join <strong>{inviteDetails.company_name}</strong> as{" "}
+                {roleInfo && (
+                  <span className={roleInfo.color}>
+                    {roleInfo.title.toLowerCase()}
+                  </span>
+                )}
+              </>
+            )}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Alert className="mb-6">
+
+        <CardContent className="space-y-6">
+          {/* Role Information */}
+          {roleInfo && (
+            <div className="bg-muted rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <roleInfo.icon className={`h-5 w-5 ${roleInfo.color}`} />
+                <span className="font-medium">{roleInfo.title}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {roleInfo.description}
+              </p>
+            </div>
+          )}
+
+          {/* Expiry Warning */}
+          {daysUntilExpiry <= 2 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                This invitation expires in {daysUntilExpiry} day
+                {daysUntilExpiry !== 1 ? "s" : ""}!
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {isSignUp
@@ -336,14 +477,29 @@ const AcceptInvite = () => {
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
             </div>
 
             {isSignUp && (
