@@ -1,7 +1,7 @@
 // src/pages/auth/AcceptInvite.tsx (Simplified Version)
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { InvitationService } from "@/services/invitationService";
 import {
