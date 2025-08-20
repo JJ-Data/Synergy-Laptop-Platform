@@ -1,14 +1,11 @@
-// Updated src/pages/company/Users.tsx
-import AppLayout from "@/components/layout/AppLayout";
-import Seo from "@/components/seo/Seo";
+// src/pages/company/Users.tsx (Improved Version)
 import { useState } from "react";
+import AppLayout from "@/components/layout/AppLayout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useAuth } from "@/context/AuthContext";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { UserService } from "@/services/userService";
+import { InviteModal } from "@/components/invitations/InviteModal";
 import {
   Card,
   CardContent,
@@ -16,6 +13,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -25,354 +25,181 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Search, UserPlus, User, Mail, Loader2 } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import {
+  Search,
+  UserPlus,
+  MoreVertical,
+  Mail,
+  Shield,
+  UserX,
+  Activity,
+  Users,
+} from "lucide-react";
 
-type CompanyUser = {
-  id: string;
-  email: string;
-  display_name?: string;
-  role: string;
-  created_at: string;
-};
-
-const inviteSchema = z.object({
-  email: z.string().email("Invalid email address"),
-});
-
-const Users = () => {
+const CompanyUsersPage = () => {
   const { companyId, company } = useCompany();
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [newRole, setNewRole] = useState<string>("");
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"admin" | "employee">(
+    "employee"
+  );
 
-  const form = useForm<z.infer<typeof inviteSchema>>({
-    resolver: zodResolver(inviteSchema),
-    defaultValues: {
-      email: "",
-    },
-  });
-
-  // Fetch company users
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ["company-users", companyId, searchTerm],
-    queryFn: async () => {
-      if (!companyId) return [];
-
-      // Get user roles for this company
-      const { data: userRoles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role")
-        .eq("company_id", companyId);
-
-      if (rolesError) throw rolesError;
-
-      if (!userRoles?.length) return [];
-
-      // Get profiles for these users
-      const userIds = userRoles.map((r) => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, display_name, created_at")
-        .in("id", userIds);
-
-      if (profilesError) throw profilesError;
-
-      // Get auth users for email addresses
-      const { data: authUsers, error: authError } =
-        await supabase.auth.admin.listUsers();
-      if (authError) throw authError;
-
-      // Combine the data
-      const companyUsers: CompanyUser[] = userRoles
-        .map((roleData: any) => {
-          const profile = profiles?.find((p: any) => p.id === roleData.user_id);
-          const authUser = authUsers.users.find(
-            (u: any) => u.id === roleData.user_id
-          );
-
-          return {
-            id: roleData.user_id,
-            email: authUser?.email || "",
-            display_name: profile?.display_name || undefined,
-            role: roleData.role,
-            created_at: authUser?.created_at || profile?.created_at || "",
-          };
-        })
-        .filter(
-          (user) =>
-            searchTerm === "" ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (user.display_name &&
-              user.display_name
-                .toLowerCase()
-                .includes(searchTerm.toLowerCase()))
-        );
-
-      return companyUsers;
-    },
+    queryKey: ["company-users", companyId],
+    queryFn: () => UserService.getCompanyUsers(companyId!),
     enabled: !!companyId,
   });
 
-  // Update role mutation
+  const filteredUsers = users.filter(
+    (user) =>
+      user.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      const { error } = await supabase
-        .from("user_roles")
-        .update({ role: role as any })
-        .eq("user_id", userId)
-        .eq("company_id", companyId);
-      if (error) throw error;
-    },
+    mutationFn: ({ userId, newRole }: { userId: string; newRole: string }) =>
+      UserService.updateUserRole(userId, companyId!, newRole),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["company-users"] });
       toast.success("Role updated successfully");
-      setSelectedUser(null);
-      setNewRole("");
     },
-    onError: (error) => {
-      toast.error("Failed to update role: " + error.message);
-    },
+    onError: () => toast.error("Failed to update role"),
   });
 
-  // Enhanced invite employee mutation with email sending
-  const inviteMutation = useMutation({
-    mutationFn: async ({ email }: { email: string }) => {
-      if (!companyId || !company?.name) throw new Error("No company selected");
-
-      // Step 1: Create invitation in database
-      const { data: token, error: inviteError } = await supabase.rpc(
-        "create_invitation",
-        {
-          _email: email,
-          _role: "employee",
-          _company_id: companyId,
-        }
-      );
-
-      if (inviteError) throw inviteError;
-
-      // Step 2: Send email via Edge Function
-      const { data: functionData, error: functionError } =
-        await supabase.functions.invoke("send-invitation-email", {
-          body: {
-            email: email,
-            token: token,
-            companyName: company.name,
-            role: "employee",
-            inviterName: user?.name || user?.email || "Administrator",
-          },
-        });
-
-      if (functionError) {
-        console.error("Email function error:", functionError);
-        // Even if email fails, we still created the invitation
-        // So we'll show a warning instead of failing completely
-        toast.warning(
-          `Invitation created but email failed to send. You can share this link manually: ${window.location.origin}/accept-invite?token=${token}`
-        );
-        return { token, emailSent: false };
-      }
-
-      return { token, emailSent: true, functionData };
-    },
-    onSuccess: (result) => {
+  const removeUserMutation = useMutation({
+    mutationFn: (userId: string) =>
+      UserService.removeUserFromCompany(userId, companyId!),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["company-users"] });
-      if (result.emailSent) {
-        toast.success(
-          "Invitation sent successfully! The employee will receive an email with instructions."
-        );
-      }
-      setInviteDialogOpen(false);
-      form.reset();
+      toast.success("User removed from company");
     },
-    onError: (error) => {
-      console.error("Invitation error:", error);
-      toast.error("Failed to send invitation: " + error.message);
-    },
+    onError: () => toast.error("Failed to remove user"),
   });
 
-  const handleUpdateRole = () => {
-    if (!selectedUser || !newRole) return;
-
-    updateRoleMutation.mutate({
-      userId: selectedUser,
-      role: newRole,
-    });
+  const openInviteModal = (role: "admin" | "employee") => {
+    setInviteRole(role);
+    setShowInviteModal(true);
   };
 
-  const onInviteSubmit = (values: z.infer<typeof inviteSchema>) => {
-    inviteMutation.mutate({ email: values.email });
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "admin":
-        return "default";
-      default:
-        return "secondary";
-    }
+  const stats = {
+    total: users.length,
+    admins: users.filter((u) => u.role === "admin").length,
+    employees: users.filter((u) => u.role === "employee").length,
   };
 
   if (!companyId) {
     return (
       <AppLayout title="Users">
-        <Seo
-          title="Users | Company Admin"
-          description="Manage users in your company."
-        />
         <div className="text-center py-8 text-muted-foreground">
-          No company context. Please log in as a company admin.
+          No company context available
         </div>
       </AppLayout>
     );
   }
 
   return (
-    <AppLayout title="Users">
-      <Seo
-        title="Users | Company Admin"
-        description="Manage users in your company."
-      />
-
+    <AppLayout title="User Management">
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold">Company Users</h1>
+            <h1 className="text-3xl font-bold">User Management</h1>
             <p className="text-muted-foreground">
-              Manage employees and admins for {company?.name}
+              Manage employees and administrators for {company?.name}
             </p>
           </div>
-
-          <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center gap-2">
-                <Mail className="h-4 w-4" />
-                Invite Employee
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Invite New Employee</DialogTitle>
-                <DialogDescription>
-                  Send an invitation email to a new employee to join{" "}
-                  {company?.name}.
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(onInviteSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email Address</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="employee@company.com"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      type="submit"
-                      disabled={inviteMutation.isPending}
-                      className="flex items-center gap-2"
-                    >
-                      {inviteMutation.isPending ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="h-4 w-4" />
-                          Send Invitation
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setInviteDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => openInviteModal("admin")}>
+              <Shield className="h-4 w-4 mr-2" />
+              Invite Admin
+            </Button>
+            <Button onClick={() => openInviteModal("employee")}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Invite Employee
+            </Button>
+          </div>
         </div>
 
-        {/* Search Bar */}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Users className="h-8 w-8 text-blue-500" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-sm text-muted-foreground">Total Users</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Shield className="h-8 w-8 text-purple-500" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.admins}</p>
+                  <p className="text-sm text-muted-foreground">Admins</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Users className="h-8 w-8 text-green-500" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.employees}</p>
+                  <p className="text-sm text-muted-foreground">Employees</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Search and Filter */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Search Users
-            </CardTitle>
-            <CardDescription>Search by email or display name</CardDescription>
+            <CardTitle>Search Users</CardTitle>
           </CardHeader>
           <CardContent>
-            <Input
-              placeholder="Enter email or name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-md"
-            />
+            <div className="flex gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* Users Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Company Users ({users.length})</CardTitle>
+            <CardTitle>Users</CardTitle>
             <CardDescription>
-              Employees and admins in your company
+              All users with access to your company
             </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Loading users...
-              </div>
-            ) : users.length === 0 ? (
+              <div className="text-center py-8">Loading users...</div>
+            ) : filteredUsers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No users found
               </div>
@@ -384,48 +211,108 @@ const Users = () => {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Joined</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Last Active</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={user.avatarUrl} />
+                            <AvatarFallback>
+                              {user.displayName?.[0] || user.email?.[0] || "?"}
+                            </AvatarFallback>
+                          </Avatar>
                           <div>
                             <div className="font-medium">
-                              {user.display_name || "No name"}
+                              {user.displayName || "Unnamed User"}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {user.id.slice(0, 8)}...
+                              ID: {user.id.slice(0, 8)}...
                             </div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
                       <TableCell>
-                        <Badge variant={getRoleColor(user.role)}>
+                        {user.email || (
+                          <span className="text-muted-foreground">
+                            No email
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            user.role === "admin" ? "default" : "secondary"
+                          }
+                        >
                           {user.role}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {user.created_at
-                          ? new Date(user.created_at).toLocaleDateString()
-                          : "Unknown"}
+                        {new Date(user.joinedAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {user.role !== "admin" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedUser(user.id)}
-                            className="flex items-center gap-1"
-                          >
-                            <UserPlus className="h-4 w-4" />
-                            Change Role
-                          </Button>
-                        )}
+                        {user.lastActive
+                          ? new Date(user.lastActive).toLocaleDateString()
+                          : "Never"}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem>
+                              <Activity className="h-4 w-4 mr-2" />
+                              View Activity
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Mail className="h-4 w-4 mr-2" />
+                              Send Message
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {user.role !== "admin" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  updateRoleMutation.mutate({
+                                    userId: user.id,
+                                    newRole: "admin",
+                                  })
+                                }
+                              >
+                                <Shield className="h-4 w-4 mr-2" />
+                                Make Admin
+                              </DropdownMenuItem>
+                            )}
+                            {user.role === "admin" && user.id !== user.id && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  updateRoleMutation.mutate({
+                                    userId: user.id,
+                                    newRole: "employee",
+                                  })
+                                }
+                              >
+                                <Users className="h-4 w-4 mr-2" />
+                                Make Employee
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => removeUserMutation.mutate(user.id)}
+                            >
+                              <UserX className="h-4 w-4 mr-2" />
+                              Remove User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -435,47 +322,18 @@ const Users = () => {
           </CardContent>
         </Card>
 
-        {/* Role Update Modal */}
-        {selectedUser && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Update User Role</CardTitle>
-              <CardDescription>
-                Change the role for{" "}
-                {users.find((u) => u.id === selectedUser)?.email}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">New Role</label>
-                <Select value={newRole} onValueChange={setNewRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Company Admin</SelectItem>
-                    <SelectItem value="employee">Employee</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleUpdateRole}
-                  disabled={!newRole || updateRoleMutation.isPending}
-                >
-                  {updateRoleMutation.isPending ? "Updating..." : "Update Role"}
-                </Button>
-                <Button variant="outline" onClick={() => setSelectedUser(null)}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Invite Modal */}
+        <InviteModal
+          open={showInviteModal}
+          onOpenChange={setShowInviteModal}
+          companyId={companyId}
+          companyName={company?.name || ""}
+          role={inviteRole}
+          inviterName={user?.name || user?.email || "Admin"}
+        />
       </div>
     </AppLayout>
   );
 };
 
-export default Users;
+export default CompanyUsersPage;
