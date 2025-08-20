@@ -1,6 +1,5 @@
-// Simplified AcceptInvite.tsx for debugging
+// Fixed AcceptInvite.tsx - Uses validation function instead of direct table access
 // Replace your current AcceptInvite component with this version
-// This focuses on core functionality and better error handling
 
 import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
@@ -60,60 +59,41 @@ const AcceptInvite = () => {
       try {
         setStatus("checking");
 
-        // First, check if invitation exists in database
-        debugLog("2. Checking invitation in database", { token });
-        const { data: invitation, error: inviteError } = await supabase
-          .from("invitations")
-          .select("*")
-          .eq("token", token)
-          .maybeSingle();
+        // Use the validation function instead of direct table access
+        debugLog("2. Calling validate_invitation_token function", { token });
 
-        debugLog("3. Database result", { invitation, inviteError });
+        const { data: validationResult, error: validationError } =
+          await supabase.rpc("validate_invitation_token", { _token: token });
 
-        if (inviteError) {
+        debugLog("3. Validation function result", {
+          validationResult,
+          validationError,
+        });
+
+        if (validationError) {
           setStatus("error");
-          setMessage("Database error: " + inviteError.message);
+          setMessage(
+            "Failed to validate invitation: " + validationError.message
+          );
           return;
         }
 
-        if (!invitation) {
+        if (!validationResult || !validationResult.valid) {
           setStatus("error");
-          setMessage("Invitation not found. The link may be invalid.");
+          setMessage(validationResult?.error || "Invalid invitation token.");
           return;
         }
 
-        // Check if already accepted
-        if (invitation.accepted_at) {
-          setStatus("error");
-          setMessage("This invitation has already been accepted.");
-          return;
-        }
-
-        // Check if expired
-        const now = new Date();
-        const expiresAt = new Date(invitation.expires_at);
-        if (now > expiresAt) {
-          setStatus("error");
-          setMessage("This invitation has expired.");
-          return;
-        }
-
-        // Get company info
-        const { data: company } = await supabase
-          .from("companies")
-          .select("name")
-          .eq("id", invitation.company_id)
-          .single();
-
+        // Extract invitation details from validation result
         const details = {
-          email: invitation.email,
-          role: invitation.role,
-          company_id: invitation.company_id,
-          company_name: company?.name || "Unknown Company",
-          expires_at: invitation.expires_at,
+          email: validationResult.email,
+          role: validationResult.role,
+          company_id: validationResult.company_id,
+          company_name: validationResult.company_name,
+          expires_at: validationResult.expires_at,
         };
 
-        debugLog("4. Invitation details", details);
+        debugLog("4. Invitation details extracted", details);
         setInviteDetails(details);
         setEmail(details.email);
 
@@ -121,7 +101,7 @@ const AcceptInvite = () => {
         const {
           data: { user: currentUser },
         } = await supabase.auth.getUser();
-        debugLog("5. Current user", { currentUser });
+        debugLog("5. Current user check", { currentUser });
 
         if (!currentUser) {
           setStatus("needs-auth");
@@ -170,17 +150,23 @@ const AcceptInvite = () => {
 
       if (data !== true) {
         setStatus("error");
-        setMessage("Failed to accept invitation. Unexpected response.");
+        setMessage(
+          "Failed to accept invitation. Unexpected response: " +
+            JSON.stringify(data)
+        );
         return;
       }
 
       setStatus("success");
       toast.success("Invitation accepted successfully!");
 
-      // Redirect after a short delay
+      // Determine redirect path based on role
+      const redirectPath =
+        inviteDetails?.role === "admin" ? "/admin" : "/employee";
+
+      // Redirect after a short delay with page reload to refresh auth context
       setTimeout(() => {
-        // Force page reload to refresh user context
-        window.location.href = "/admin"; // or wherever they should go
+        window.location.href = redirectPath;
       }, 2000);
     } catch (err: any) {
       debugLog("ERROR in acceptInvitation", err);
@@ -226,9 +212,15 @@ const AcceptInvite = () => {
           );
           setIsSignUp(false);
         } else {
-          toast.success(
-            "Account created! Please check your email to verify, then return here."
-          );
+          // Check if email confirmation is required
+          if (data.user && !data.session) {
+            toast.success(
+              "Account created! Please check your email to verify, then return here."
+            );
+          } else {
+            toast.success("Account created successfully!");
+            // The useEffect will trigger and accept the invitation
+          }
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -286,13 +278,17 @@ const AcceptInvite = () => {
               <AlertDescription>{message}</AlertDescription>
             </Alert>
 
-            {/* Debug Information */}
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer">Debug Information</summary>
-              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            </details>
+            {/* Debug Information - only show in development */}
+            {process.env.NODE_ENV === "development" && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer">
+                  Debug Information (Dev Only)
+                </summary>
+                <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </details>
+            )}
 
             <div className="flex gap-3">
               <Button asChild variant="outline" className="flex-1">
@@ -316,13 +312,13 @@ const AcceptInvite = () => {
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center py-8">
             <CheckCircle className="h-12 w-12 text-green-600 mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Invitation Accepted!</h2>
+            <h2 className="text-xl font-semibold mb-2">Welcome!</h2>
             <p className="text-muted-foreground text-center mb-4">
-              You now have {inviteDetails?.role} access to{" "}
-              {inviteDetails?.company_name}.
+              You now have <strong>{inviteDetails?.role}</strong> access to{" "}
+              <strong>{inviteDetails?.company_name}</strong>.
             </p>
             <p className="text-sm text-muted-foreground">
-              Redirecting to dashboard...
+              Redirecting to your dashboard...
             </p>
           </CardContent>
         </Card>
@@ -338,6 +334,9 @@ const AcceptInvite = () => {
           <CardContent className="flex flex-col items-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
             <p className="text-muted-foreground">Accepting invitation...</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Setting up your {inviteDetails?.role} access...
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -443,13 +442,17 @@ const AcceptInvite = () => {
             </div>
           </form>
 
-          {/* Debug Information */}
-          <details className="mt-4 text-xs text-muted-foreground">
-            <summary className="cursor-pointer">Debug Information</summary>
-            <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
-              {JSON.stringify(debugInfo, null, 2)}
-            </pre>
-          </details>
+          {/* Debug Information - only show in development */}
+          {process.env.NODE_ENV === "development" && debugInfo && (
+            <details className="mt-4 text-xs text-muted-foreground">
+              <summary className="cursor-pointer">
+                Debug Information (Dev Only)
+              </summary>
+              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-40">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </details>
+          )}
         </CardContent>
       </Card>
     </div>
