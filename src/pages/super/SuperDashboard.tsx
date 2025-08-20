@@ -80,7 +80,7 @@ const SuperDashboard = () => {
       <section className="grid md:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Tenants</CardTitle>
+            <CardTitle>Company</CardTitle>
             <CardDescription>Total companies onboarded</CardDescription>
           </CardHeader>
           <CardContent>

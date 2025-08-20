@@ -9,12 +9,45 @@ import { Plus, Pencil, Trash2, Mail, Copy } from "lucide-react";
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 
@@ -28,9 +61,9 @@ type CompanyForm = z.infer<typeof companySchema>;
 const Companies = () => {
   const qc = useQueryClient();
   const [openForm, setOpenForm] = useState(false);
-  const [editing, setEditing] = useState<Tables<'companies'> | null>(null);
-  const [toDelete, setToDelete] = useState<Tables<'companies'> | null>(null);
-  const [inviteFor, setInviteFor] = useState<Tables<'companies'> | null>(null);
+  const [editing, setEditing] = useState<Tables<"companies"> | null>(null);
+  const [toDelete, setToDelete] = useState<Tables<"companies"> | null>(null);
+  const [inviteFor, setInviteFor] = useState<Tables<"companies"> | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
 
   const form = useForm<CompanyForm>({
@@ -41,20 +74,30 @@ const Companies = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["companies"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("companies").select("id, name, domain, created_at").order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name, domain, created_at")
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as Tables<'companies'>[];
+      return data as Tables<"companies">[];
     },
   });
 
   const upsertMutation = useMutation({
-    mutationFn: async (payload: TablesInsert<'companies'> & { id?: string }) => {
+    mutationFn: async (
+      payload: TablesInsert<"companies"> & { id?: string }
+    ) => {
       if (payload.id) {
         const { id, ...update } = payload;
-        const { error } = await supabase.from("companies").update(update).eq("id", id);
+        const { error } = await supabase
+          .from("companies")
+          .update(update)
+          .eq("id", id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("companies").insert([{ name: payload.name!, domain: payload.domain || null }]);
+        const { error } = await supabase
+          .from("companies")
+          .insert([{ name: payload.name!, domain: payload.domain || null }]);
         if (error) throw error;
       }
     },
@@ -82,7 +125,13 @@ const Companies = () => {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async ({ email, companyId }: { email: string; companyId: string }) => {
+    mutationFn: async ({
+      email,
+      companyId,
+    }: {
+      email: string;
+      companyId: string;
+    }) => {
       const { data, error } = await supabase.rpc("create_invitation", {
         _email: email,
         _role: "admin",
@@ -95,7 +144,8 @@ const Companies = () => {
       setInviteToken(token);
       toast.success("Admin invitation created");
     },
-    onError: (e: any) => toast.error(e.message || "Failed to create invitation"),
+    onError: (e: any) =>
+      toast.error(e.message || "Failed to create invitation"),
   });
 
   const startCreate = () => {
@@ -104,14 +154,14 @@ const Companies = () => {
     setOpenForm(true);
   };
 
-  const startEdit = (c: Tables<'companies'>) => {
+  const startEdit = (c: Tables<"companies">) => {
     setEditing(c);
     form.reset({ name: c.name, domain: c.domain ?? "" });
     setOpenForm(true);
   };
 
   const onSubmit = (values: CompanyForm) => {
-    const payload: TablesInsert<'companies'> & { id?: string } = {
+    const payload: TablesInsert<"companies"> & { id?: string } = {
       name: values.name,
       domain: values.domain || null,
       id: editing?.id,
@@ -121,11 +171,17 @@ const Companies = () => {
 
   return (
     <AppLayout title="Companies">
-      <Seo title="Companies | Super Admin" description="Manage tenant companies in the multi-tenant laptop financing platform." canonical="/super/companies" />
+      <Seo
+        title="Companies | Super Admin"
+        description="Manage tenant companies in the multi-tenant laptop financing platform."
+        canonical="/super/companies"
+      />
 
       <section aria-labelledby="companies-heading" className="space-y-4">
         <header className="flex items-center justify-between">
-          <h2 id="companies-heading" className="sr-only">Companies list</h2>
+          <h2 id="companies-heading" className="sr-only">
+            Companies list
+          </h2>
           <Button onClick={startCreate} variant="hero">
             <Plus className="mr-2 h-4 w-4" /> New Company
           </Button>
@@ -133,7 +189,13 @@ const Companies = () => {
 
         <div className="rounded-md border">
           <Table>
-            <TableCaption>{isLoading ? "Loading companies..." : (data?.length ? `${data.length} companies` : "No companies yet")}</TableCaption>
+            <TableCaption>
+              {isLoading
+                ? "Loading companies..."
+                : data?.length
+                ? `${data.length} companies`
+                : "No companies yet"}
+            </TableCaption>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -147,35 +209,73 @@ const Companies = () => {
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell>{c.domain ?? "—"}</TableCell>
-                  <TableCell>{new Date(c.created_at as any).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {new Date(c.created_at as any).toLocaleDateString()}
+                  </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Dialog open={inviteFor?.id === c.id} onOpenChange={(o) => { if (!o) { setInviteFor(null); setInviteToken(null); } }}>
+                    <Dialog
+                      open={inviteFor?.id === c.id}
+                      onOpenChange={(o) => {
+                        if (!o) {
+                          setInviteFor(null);
+                          setInviteToken(null);
+                        }
+                      }}
+                    >
                       <DialogTrigger asChild>
-                        <Button variant="subtle" size="sm" onClick={() => setInviteFor(c)}>
+                        <Button
+                          variant="subtle"
+                          size="sm"
+                          onClick={() => setInviteFor(c)}
+                        >
                           <Mail className="mr-2 h-4 w-4" /> Invite Admin
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Invite Admin to {c.name}</DialogTitle>
-                          <DialogDescription>Send an invitation to assign an admin for this company.</DialogDescription>
+                          <DialogDescription>
+                            Send an invitation to assign an admin for this
+                            company.
+                          </DialogDescription>
                         </DialogHeader>
                         {!inviteToken ? (
-                          <InviteForm onSubmit={(email) => inviteMutation.mutate({ email, companyId: c.id })} loading={inviteMutation.isPending} />
+                          <InviteForm
+                            onSubmit={(email) =>
+                              inviteMutation.mutate({ email, companyId: c.id })
+                            }
+                            loading={inviteMutation.isPending}
+                          />
                         ) : (
                           <InviteResult token={inviteToken} />
                         )}
                         <DialogFooter>
-                          <Button variant="outline" onClick={() => { setInviteFor(null); setInviteToken(null); }}>Close</Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setInviteFor(null);
+                              setInviteToken(null);
+                            }}
+                          >
+                            Close
+                          </Button>
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
 
-                    <Button variant="outline" size="sm" onClick={() => startEdit(c)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => startEdit(c)}
+                    >
                       <Pencil className="mr-2 h-4 w-4" /> Edit
                     </Button>
 
-                    <Button variant="destructive" size="sm" onClick={() => setToDelete(c)}>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setToDelete(c)}
+                    >
                       <Trash2 className="mr-2 h-4 w-4" /> Delete
                     </Button>
                   </TableCell>
@@ -189,8 +289,14 @@ const Companies = () => {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Company" : "New Company"}</DialogTitle>
-            <DialogDescription>{editing ? "Update company details." : "Create a new tenant company."}</DialogDescription>
+            <DialogTitle>
+              {editing ? "Edit Company" : "New Company"}
+            </DialogTitle>
+            <DialogDescription>
+              {editing
+                ? "Update company details."
+                : "Create a new tenant company."}
+            </DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -213,36 +319,52 @@ const Companies = () => {
                 name="domain"
                 render={({ field }) => (
                   <FormItem>
-<FormLabel>Company Domain (optional)</FormLabel>
-<FormControl>
-  <Input placeholder="acme.com" {...field} />
-</FormControl>
-<FormDescription>Used for SSO/email matching. You can leave this blank.</FormDescription>
+                    <FormLabel>Company Domain (optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="acme.com" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Used for SSO/email matching. You can leave this blank.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpenForm(false)}>Cancel</Button>
-                <Button type="submit" disabled={upsertMutation.isPending}>{upsertMutation.isPending ? "Saving..." : "Save"}</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpenForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={upsertMutation.isPending}>
+                  {upsertMutation.isPending ? "Saving..." : "Save"}
+                </Button>
               </DialogFooter>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+      <AlertDialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && setToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete company?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove the company and related data. This action cannot be undone.
+              This will permanently remove the company and related data. This
+              action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => toDelete && deleteMutation.mutate(toDelete.id!)}>
+            <AlertDialogAction
+              onClick={() => toDelete && deleteMutation.mutate(toDelete.id!)}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -252,13 +374,25 @@ const Companies = () => {
   );
 };
 
-function InviteForm({ onSubmit, loading }: { onSubmit: (email: string) => void; loading: boolean }) {
+function InviteForm({
+  onSubmit,
+  loading,
+}: {
+  onSubmit: (email: string) => void;
+  loading: boolean;
+}) {
   const [email, setEmail] = useState("");
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="invite-email">Admin Email</Label>
-        <Input id="invite-email" type="email" placeholder="admin@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input
+          id="invite-email"
+          type="email"
+          placeholder="admin@company.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </div>
       <Button onClick={() => onSubmit(email)} disabled={!email || loading}>
         {loading ? "Creating..." : "Create Invitation"}
@@ -268,7 +402,7 @@ function InviteForm({ onSubmit, loading }: { onSubmit: (email: string) => void; 
 }
 
 function InviteResult({ token }: { token: string }) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = `${origin}/accept-invite?token=${token}`;
   const copy = async (text: string) => {
     try {

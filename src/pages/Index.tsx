@@ -7,7 +7,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Seo
-        title="Multi‑Tenant Laptop Financing Platform"
+        title="Laptop Financing Platform"
         description="Manage company devices, approvals, and repayments across tenants with role-based access."
         canonical="/"
       />
@@ -29,11 +29,16 @@ const Index = () => {
               Laptop financing, simplified for every company
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
-              A secure, multi‑tenant platform for Super Admins, Company Admins, and Employees to manage devices,
-              approvals, and repayments with clarity.
+              A secured platform for Super Admins, Company Admins, and Employees
+              to manage devices, approvals, and repayments with clarity.
             </p>
             <div className="mt-8 flex flex-wrap gap-4 items-center">
-              <Button asChild variant="hero" size="lg" className="relative overflow-hidden">
+              <Button
+                asChild
+                variant="hero"
+                size="lg"
+                className="relative overflow-hidden"
+              >
                 <Link to="/login">
                   <span className="pointer-events-none absolute inset-y-0 left-[-100%] w-1/3 bg-foreground/10 blur-md animate-shine" />
                   Get Started
@@ -52,19 +57,22 @@ const Index = () => {
           <article>
             <h3 className="text-xl font-semibold">Super Admin</h3>
             <p className="text-muted-foreground mt-2">
-              Onboard companies, assign admins, and view repayment performance across tenants.
+              Onboard companies, assign admins, and view repayment performance
+              across Compaines.
             </p>
           </article>
           <article>
             <h3 className="text-xl font-semibold">Company Admin</h3>
             <p className="text-muted-foreground mt-2">
-              Manage laptop catalogs, policies, employee requests, and payroll schedules.
+              Manage laptop catalogs, policies, employee requests, and payroll
+              schedules.
             </p>
           </article>
           <article>
             <h3 className="text-xl font-semibold">Employee</h3>
             <p className="text-muted-foreground mt-2">
-              Choose a laptop, select a repayment plan, and track your progress to ownership.
+              Make a laptop Request, select a repayment plan, and track your
+              progress to ownership.
             </p>
           </article>
         </div>

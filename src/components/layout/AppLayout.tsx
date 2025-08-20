@@ -56,7 +56,7 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
             }
             className="font-semibold"
           >
-            Financelane
+            Laptop Platform
           </Link>
           <nav className="hidden md:flex items-center gap-6">
             {nav.map((n) => (
@@ -122,7 +122,12 @@ export const AppLayout = ({ title, children }: AppLayoutProps) => {
                       </SheetClose>
                     ) : (
                       <SheetClose asChild>
-                        <Button asChild variant="hero" size="sm" className="mt-4">
+                        <Button
+                          asChild
+                          variant="hero"
+                          size="sm"
+                          className="mt-4"
+                        >
                           <Link to="/login">Login</Link>
                         </Button>
                       </SheetClose>
