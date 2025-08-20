@@ -19,7 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { toast } from "sonner";
 import {
@@ -29,7 +29,7 @@ import {
   XCircle,
   Loader2,
 } from "lucide-react";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/lib/supabase/types";
 
 function computeMonthly(
   principal: number,

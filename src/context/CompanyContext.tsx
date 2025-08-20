@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/lib/supabase/types";
 
 interface CompanyContextValue {
   companyId: string | null;

@@ -1,5 +1,5 @@
 // src/services/userService.ts
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 
 export interface CompanyUser {
   id: string;

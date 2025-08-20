@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import {
   User,
   BarChart3,
 } from "lucide-react";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/lib/supabase/types";
 import { calculateLoanProgress } from "@/lib/finance";
 import LoanTable from "@/components/company/LoanTable";
 import LoanDetailsDialog from "@/components/company/LoanDetailsDialog";

@@ -1,5 +1,5 @@
 // src/services/requestService.ts
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
 export interface LaptopRequest {

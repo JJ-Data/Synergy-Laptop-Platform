@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -44,7 +44,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Upload } from "lucide-react";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/lib/supabase/types";
 
 const laptopSchema = z.object({
   name: z.string().min(1, "Name is required"),

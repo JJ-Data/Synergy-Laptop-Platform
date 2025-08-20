@@ -49,9 +49,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert } from "@/lib/supabase/types";
 
 const companySchema = z.object({
   name: z.string().min(2, "Name is required"),

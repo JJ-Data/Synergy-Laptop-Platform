@@ -22,7 +22,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -30,7 +30,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Settings, Calculator, Plus, Save, AlertTriangle } from "lucide-react";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/lib/supabase/types";
 import { calculateMonthlyPayment } from "@/lib/finance";
 
 const policySchema = z.object({
