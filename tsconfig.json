@@ -12,6 +12,8 @@
     },
     "skipLibCheck": true,
     "allowJs": true,
-    "strict": true
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
   }
 }
