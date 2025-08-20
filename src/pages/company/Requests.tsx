@@ -1,7 +1,17 @@
-// File: src/pages/company/Requests.tsx
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -9,295 +19,266 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCompany } from "@/context/CompanyContext";
-import { useState } from "react";
 import { toast } from "sonner";
 import {
-  CheckCircle,
-  XCircle,
-  Clock,
-  User,
-  Laptop,
-  Calendar,
-  DollarSign,
-  FileText,
-  Eye,
   AlertTriangle,
-  TrendingUp,
-  Filter,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
-import { calculateMonthlyPayment } from "@/lib/finance";
 
-// Enhanced request type with relations
-type RequestWithDetails = {
-  id: string;
-  status: string;
-  requested_amount_cents: number;
-  duration_months: number;
-  created_at: string;
-  decided_at?: string;
-  employee_id: string;
-  laptop_id: string;
-  laptops: {
-    name: string;
-    brand: string;
-    price_cents: number;
-    image_url?: string;
-    cpu?: string;
-    ram_gb?: number;
-    storage_gb?: number;
-  };
-  profiles: {
-    display_name?: string;
-    avatar_url?: string;
-  };
-};
-
-// Helper function to get status info
-function getStatusInfo(status: string) {
-  switch (status) {
-    case "pending":
-      return {
-        color: "bg-yellow-100 text-yellow-800 border-yellow-200",
-        icon: Clock,
-        label: "Pending Review",
-        variant: "secondary" as const,
-      };
-    case "approved":
-      return {
-        color: "bg-green-100 text-green-800 border-green-200",
-        icon: CheckCircle,
-        label: "Approved",
-        variant: "default" as const,
-      };
-    case "rejected":
-      return {
-        color: "bg-red-100 text-red-800 border-red-200",
-        icon: XCircle,
-        label: "Rejected",
-        variant: "destructive" as const,
-      };
-    case "purchased":
-      return {
-        color: "bg-blue-100 text-blue-800 border-blue-200",
-        icon: CheckCircle,
-        label: "Purchased",
-        variant: "default" as const,
-      };
-    default:
-      return {
-        color: "bg-gray-100 text-gray-800 border-gray-200",
-        icon: AlertTriangle,
-        label: "Unknown",
-        variant: "outline" as const,
-      };
-  }
+function computeMonthly(
+  principal: number,
+  months: number,
+  interestRate: number
+) {
+  const monthlyRate = interestRate / 100 / 12;
+  const payment =
+    monthlyRate === 0
+      ? principal / months
+      : (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
+  return Math.round(payment);
 }
+
+type RequestRow = Tables<"requests"> & {
+  laptop?: { name: string | null; brand: string | null } | null;
+  employee?: { display_name: string | null; email?: string | null } | null;
+};
 
 const Requests = () => {
   const { companyId, company } = useCompany();
-  const queryClient = useQueryClient();
-  const [selectedRequest, setSelectedRequest] =
-    useState<RequestWithDetails | null>(null);
-  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
-  const [actionRequest, setActionRequest] = useState<{
-    request: RequestWithDetails;
-    action: "approve" | "reject";
-  } | null>(null);
-  const [activeTab, setActiveTab] = useState("pending");
+  const qc = useQueryClient();
 
-  // Fetch company policy for calculations
-  const { data: policy } = useQuery({
-    queryKey: ["policy", companyId],
+  const {
+    data: requests = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["pending-requests", companyId],
     queryFn: async () => {
-      if (!companyId) return null;
-      const { data, error } = await supabase
-        .from("policies")
-        .select("interest_rate")
-        .eq("company_id", companyId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      if (!companyId) return [] as RequestRow[];
+
+      try {
+        // First, get the basic request data
+        const { data: baseRequests, error: requestsError } = await supabase
+          .from("requests")
+          .select("*")
+          .eq("company_id", companyId)
+          .eq("status", "pending")
+          .order("created_at", { ascending: true });
+
+        if (requestsError) throw requestsError;
+        if (!baseRequests?.length) return [];
+
+        let requests = baseRequests as RequestRow[];
+
+        // Try to enrich with laptop data
+        try {
+          const laptopIds = requests.map((r) => r.laptop_id);
+          if (laptopIds.length > 0) {
+            const { data: laptops } = await supabase
+              .from("laptops")
+              .select("id, name, brand")
+              .in("id", laptopIds);
+
+            if (laptops) {
+              requests = requests.map((r) => ({
+                ...r,
+                laptop: laptops.find((l) => l.id === r.laptop_id) || {
+                  name: "Unknown Laptop",
+                  brand: null,
+                },
+              }));
+            }
+          }
+        } catch (laptopError) {
+          console.warn("Could not fetch laptop details:", laptopError);
+          // Continue without laptop details
+        }
+
+        // Try to enrich with employee profile data
+        try {
+          const employeeIds = requests.map((r) => r.employee_id);
+          if (employeeIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, display_name")
+              .in("id", employeeIds);
+
+            if (profiles) {
+              requests = requests.map((r) => ({
+                ...r,
+                employee: profiles.find((p) => p.id === r.employee_id) || {
+                  display_name: null,
+                },
+              }));
+            }
+          }
+        } catch (profileError) {
+          console.warn(
+            "Could not fetch employee profiles due to RLS restrictions:",
+            profileError
+          );
+          // Try to get email from auth users as fallback
+          try {
+            const { data: authUsers } = await supabase.auth.admin.listUsers();
+            if (authUsers?.users) {
+              requests = requests.map((r) => {
+                const authUser = authUsers.users.find(
+                  (u) => u.id === r.employee_id
+                );
+                return {
+                  ...r,
+                  employee: {
+                    display_name:
+                      authUser?.email?.split("@")[0] || "Unknown User",
+                    email: authUser?.email,
+                  },
+                };
+              });
+            }
+          } catch (authError) {
+            console.warn("Could not fetch auth user data:", authError);
+            // Use employee ID as fallback
+            requests = requests.map((r) => ({
+              ...r,
+              employee: { display_name: `User ${r.employee_id.slice(0, 8)}` },
+            }));
+          }
+        }
+
+        return requests;
+      } catch (error) {
+        console.error("Error fetching requests:", error);
+        throw error;
+      }
     },
     enabled: !!companyId,
+    retry: 2,
   });
 
-  // Fetch all company requests with employee and laptop details
-  const { data: requests = [], isLoading } = useQuery({
-    queryKey: ["company-requests", companyId],
-    queryFn: async () => {
-      if (!companyId) return [];
+  const approveMutation = useMutation({
+    mutationFn: async (req: RequestRow) => {
+      try {
+        // Get company policy for interest rate
+        const { data: policy } = await supabase
+          .from("policies")
+          .select("interest_rate")
+          .eq("company_id", req.company_id)
+          .maybeSingle();
 
-      const { data, error } = await supabase
-        .from("requests")
-        .select(
-          `
-          *,
-          laptops(name, brand, price_cents, image_url, cpu, ram_gb, storage_gb),
-          profiles!requests_employee_id_fkey(display_name, avatar_url)
-        `
-        )
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return data as RequestWithDetails[];
-    },
-    enabled: !!companyId,
-  });
-
-  // Update request status mutation with loan creation
-  const updateRequestMutation = useMutation({
-    mutationFn: async ({
-      requestId,
-      status,
-    }: {
-      requestId: string;
-      status: "approved" | "rejected";
-    }) => {
-      const request = requests.find((r) => r.id === requestId);
-      if (!request) throw new Error("Request not found");
-
-      // Update request status
-      const { error: requestError } = await supabase
-        .from("requests")
-        .update({
-          status,
-          decided_at: new Date().toISOString(),
-        })
-        .eq("id", requestId);
-
-      if (requestError) throw requestError;
-
-      // If approved, create loan and repayment schedule
-      if (status === "approved") {
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setMonth(startDate.getMonth() + request.duration_months);
+        const rate = policy?.interest_rate ?? 0;
+        const start = new Date();
+        const end = new Date(start);
+        end.setMonth(end.getMonth() + req.duration_months);
 
         // Create loan
-        const { data: loanData, error: loanError } = await supabase
+        const { data: loan, error: loanError } = await supabase
           .from("loans")
-          .insert([
-            {
-              company_id: companyId!,
-              employee_id: request.employee_id,
-              request_id: requestId,
-              principal_cents: request.requested_amount_cents,
-              interest_rate: interestRate,
-              start_date: startDate.toISOString().split("T")[0],
-              end_date: endDate.toISOString().split("T")[0],
-              status: "active",
-            },
-          ])
-          .select()
+          .insert({
+            company_id: req.company_id,
+            employee_id: req.employee_id,
+            request_id: req.id,
+            principal_cents: req.requested_amount_cents,
+            interest_rate: rate,
+            start_date: start.toISOString().split("T")[0],
+            end_date: end.toISOString().split("T")[0],
+          })
+          .select("id")
           .single();
 
         if (loanError) throw loanError;
 
-        // Generate repayment schedule
-        const monthlyAmount = calculateMonthlyPayment(
-          request.requested_amount_cents / 100,
-          request.duration_months,
-          interestRate
+        // Calculate monthly payment
+        const monthly =
+          computeMonthly(
+            req.requested_amount_cents / 100,
+            req.duration_months,
+            rate
+          ) * 100;
+
+        // Create repayment schedule
+        const repayments = Array.from(
+          { length: req.duration_months },
+          (_, i) => {
+            const due = new Date(start);
+            due.setMonth(due.getMonth() + i + 1);
+            return {
+              company_id: req.company_id,
+              employee_id: req.employee_id,
+              loan_id: loan.id,
+              due_date: due.toISOString().split("T")[0],
+              amount_cents: monthly,
+            } as Tables<"repayments">;
+          }
         );
 
-        const repayments = [];
-        for (let i = 0; i < request.duration_months; i++) {
-          const dueDate = new Date(startDate);
-          dueDate.setMonth(dueDate.getMonth() + i + 1);
-
-          repayments.push({
-            company_id: companyId!,
-            employee_id: request.employee_id,
-            loan_id: loanData.id,
-            due_date: dueDate.toISOString().split("T")[0],
-            amount_cents: Math.round(monthlyAmount * 100),
-            status: "due",
-          });
-        }
-
-        const { error: repaymentsError } = await supabase
+        const { error: repayError } = await supabase
           .from("repayments")
           .insert(repayments);
 
-        if (repaymentsError) throw repaymentsError;
+        if (repayError) throw repayError;
+
+        // Update request status
+        const { error: reqError } = await supabase
+          .from("requests")
+          .update({ status: "approved", decided_at: new Date().toISOString() })
+          .eq("id", req.id);
+
+        if (reqError) throw reqError;
+
+        return { success: true };
+      } catch (error) {
+        console.error("Approval process failed:", error);
+        throw error;
       }
     },
-    onSuccess: (_, { status }) => {
-      queryClient.invalidateQueries({ queryKey: ["company-requests"] });
-      if (status === "approved") {
-        toast.success("Request approved and loan created successfully!");
-      } else {
-        toast.success("Request rejected successfully");
-      }
-      setActionRequest(null);
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["pending-requests", companyId] });
+      toast.success("Request approved successfully");
     },
-    onError: (error) => {
-      toast.error("Failed to update request: " + error.message);
+    onError: (e: unknown) => {
+      const message =
+        e instanceof Error ? e.message : "Failed to approve request";
+      toast.error("Approval failed: " + message);
     },
   });
 
-  const handleRequestAction = (
-    request: RequestWithDetails,
-    action: "approve" | "reject"
-  ) => {
-    setActionRequest({ request, action });
-  };
-
-  const confirmAction = () => {
-    if (!actionRequest) return;
-    updateRequestMutation.mutate({
-      requestId: actionRequest.request.id,
-      status: actionRequest.action,
-    });
-  };
-
-  const openRequestDetails = (request: RequestWithDetails) => {
-    setSelectedRequest(request);
-    setIsDetailsDialogOpen(true);
-  };
-
-  // Filter requests by status
-  const filteredRequests = requests.filter((request) => {
-    if (activeTab === "all") return true;
-    return request.status === activeTab;
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("requests")
+        .update({ status: "rejected", decided_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["pending-requests", companyId] });
+      toast.success("Request rejected");
+    },
+    onError: (e: unknown) => {
+      const message =
+        e instanceof Error ? e.message : "Failed to reject request";
+      toast.error("Rejection failed: " + message);
+    },
   });
 
-  // Calculate stats
-  const stats = {
-    total: requests.length,
-    pending: requests.filter((r) => r.status === "pending").length,
-    approved: requests.filter((r) => r.status === "approved").length,
-    rejected: requests.filter((r) => r.status === "rejected").length,
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case "approved":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "rejected":
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <AlertTriangle className="h-4 w-4 text-gray-500" />;
+    }
   };
-
-  const interestRate = policy?.interest_rate ?? 0;
 
   if (!companyId) {
     return (
@@ -314,502 +295,243 @@ const Requests = () => {
   }
 
   return (
-    <AppLayout title="Financing Requests">
+    <AppLayout title="Requests">
       <Seo
         title="Requests | Company Admin"
         description="Review and approve employee device financing requests."
       />
 
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Financing Requests</h1>
-            <p className="text-muted-foreground">
-              Review and manage employee laptop financing applications
-            </p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold">Financing Requests</h1>
+          <p className="text-muted-foreground">
+            Review and process employee device financing requests for{" "}
+            {company?.name}
+          </p>
         </div>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <div className="text-sm font-medium">Total</div>
-              </div>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-yellow-600" />
-                <div className="text-sm font-medium">Pending</div>
-              </div>
-              <div className="text-2xl font-bold">{stats.pending}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <div className="text-sm font-medium">Approved</div>
-              </div>
-              <div className="text-2xl font-bold">{stats.approved}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <XCircle className="h-4 w-4 text-red-600" />
-                <div className="text-sm font-medium">Rejected</div>
-              </div>
-              <div className="text-2xl font-bold">{stats.rejected}</div>
-            </CardContent>
-          </Card>
-        </div>
+        {error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Failed to load requests:{" "}
+              {error instanceof Error ? error.message : "Unknown error"}
+            </AlertDescription>
+          </Alert>
+        )}
 
-        {/* Requests Table with Tabs */}
         <Card>
           <CardHeader>
-            <CardTitle>Request Management</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Pending Requests ({requests.length})
+            </CardTitle>
             <CardDescription>
-              Filter and review employee financing requests
+              Requests awaiting your review and approval
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="pending">Pending</TabsTrigger>
-                <TabsTrigger value="approved">Approved</TabsTrigger>
-                <TabsTrigger value="rejected">Rejected</TabsTrigger>
-                <TabsTrigger value="purchased">Purchased</TabsTrigger>
-                <TabsTrigger value="all">All</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={activeTab} className="space-y-4 mt-6">
-                {isLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Loading requests...
-                  </div>
-                ) : filteredRequests.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No {activeTab === "all" ? "" : activeTab + " "}requests
-                    found
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredRequests.map((request) => {
-                      const statusInfo = getStatusInfo(request.status);
-                      const StatusIcon = statusInfo.icon;
-                      const monthlyPayment = calculateMonthlyPayment(
-                        request.requested_amount_cents / 100,
-                        request.duration_months,
-                        interestRate
+            {isLoading ? (
+              <div className="flex items-center gap-3 p-8 text-center">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-muted-foreground">
+                  Loading requests...
+                </span>
+              </div>
+            ) : requests.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <h3 className="font-medium">All caught up!</h3>
+                <p className="text-muted-foreground">
+                  No pending requests at the moment.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Device</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Monthly Payment</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {requests.map((r) => {
+                      // Calculate estimated monthly payment for preview
+                      const monthlyEstimate = computeMonthly(
+                        r.requested_amount_cents / 100,
+                        r.duration_months,
+                        0 // Using 0% for estimation, real rate will be applied on approval
                       );
 
                       return (
-                        <div
-                          key={request.id}
-                          className="border rounded-lg p-6 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex gap-4 flex-1">
-                              {/* Employee Info */}
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-12 w-12">
-                                  <AvatarImage
-                                    src={
-                                      request.profiles?.avatar_url || undefined
-                                    }
-                                  />
-                                  <AvatarFallback>
-                                    <User className="h-6 w-6" />
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <div className="font-medium">
-                                    {request.profiles?.display_name ||
-                                      "Unknown Employee"}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    Submitted{" "}
-                                    {new Date(
-                                      request.created_at
-                                    ).toLocaleDateString()}
-                                  </div>
-                                </div>
+                        <TableRow key={r.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {r.employee?.display_name || "Unknown User"}
                               </div>
-
-                              {/* Request Details */}
-                              <div className="flex-1 grid md:grid-cols-3 gap-4 min-w-0">
-                                {/* Laptop Info */}
-                                <div className="flex gap-3">
-                                  <div className="w-16 h-16 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
-                                    <img
-                                      src={
-                                        request.laptops.image_url ||
-                                        "/placeholder.svg"
-                                      }
-                                      alt={request.laptops.name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-medium truncate">
-                                      {request.laptops.brand}{" "}
-                                      {request.laptops.name}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                      ₦
-                                      {Math.round(
-                                        request.requested_amount_cents / 100
-                                      ).toLocaleString()}
-                                    </div>
-                                  </div>
+                              {r.employee?.email && (
+                                <div className="text-sm text-muted-foreground">
+                                  {r.employee.email}
                                 </div>
-
-                                {/* Financial Details */}
-                                <div>
-                                  <div className="text-sm text-muted-foreground">
-                                    Monthly Payment
-                                  </div>
-                                  <div className="font-semibold">
-                                    ₦{Math.round(monthlyPayment).toLocaleString()}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {request.duration_months} months
-                                  </div>
-                                </div>
-
-                                {/* Status */}
-                                <div>
-                                  <Badge
-                                    variant={statusInfo.variant}
-                                    className={statusInfo.color}
-                                  >
-                                    <StatusIcon className="h-3 w-3 mr-1" />
-                                    {statusInfo.label}
-                                  </Badge>
-                                  {request.decided_at && (
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      Decided{" "}
-                                      {new Date(
-                                        request.decided_at
-                                      ).toLocaleDateString()}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex gap-2 ml-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openRequestDetails(request)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                Details
-                              </Button>
-
-                              {request.status === "pending" && (
-                                <>
-                                  <Button
-                                    variant="default"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleRequestAction(request, "approve")
-                                    }
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleRequestAction(request, "reject")
-                                    }
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                </>
                               )}
                             </div>
-                          </div>
-                        </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {r.laptop?.brand && r.laptop?.name
+                                  ? `${r.laptop.brand} ${r.laptop.name}`
+                                  : r.laptop?.name || "Unknown Device"}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-mono">
+                              ₦
+                              {(
+                                r.requested_amount_cents / 100
+                              ).toLocaleString()}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {r.duration_months} months
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-mono text-sm">
+                              ~₦{monthlyEstimate.toLocaleString()}/mo
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              (estimated)
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {new Date(r.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(r.created_at).toLocaleTimeString()}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-2 justify-end">
+                              <Button
+                                size="sm"
+                                onClick={() => approveMutation.mutate(r)}
+                                disabled={
+                                  approveMutation.isPending ||
+                                  rejectMutation.isPending
+                                }
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                {approveMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-4 w-4" />
+                                )}
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => rejectMutation.mutate(r.id)}
+                                disabled={
+                                  approveMutation.isPending ||
+                                  rejectMutation.isPending
+                                }
+                              >
+                                {rejectMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <XCircle className="h-4 w-4" />
+                                )}
+                                Reject
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Request Details Modal */}
-      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Request Details</DialogTitle>
-            <DialogDescription>
-              Complete information about this financing request
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedRequest && (
-            <div className="space-y-6">
-              {/* Employee Section */}
-              <div>
-                <h4 className="font-medium mb-3">Employee Information</h4>
-                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage
-                      src={selectedRequest.profiles?.avatar_url || undefined}
-                    />
-                    <AvatarFallback>
-                      <User className="h-6 w-6" />
-                    </AvatarFallback>
-                  </Avatar>
+        {/* Summary Stats */}
+        {requests.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-8 w-8 text-yellow-500" />
                   <div>
-                    <div className="font-medium">
-                      {selectedRequest.profiles?.display_name ||
-                        "Unknown Employee"}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Employee ID: {selectedRequest.employee_id.slice(0, 8)}...
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Pending Requests
+                    </p>
+                    <p className="text-2xl font-bold">{requests.length}</p>
                   </div>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Laptop Section */}
-              <div>
-                <h4 className="font-medium mb-3">Requested Device</h4>
-                <div className="flex gap-4 p-3 bg-muted rounded-lg">
-                  <div className="w-20 h-20 bg-background rounded-lg overflow-hidden flex-shrink-0">
-                    <img
-                      src={
-                        selectedRequest.laptops.image_url || "/placeholder.svg"
-                      }
-                      alt={selectedRequest.laptops.name}
-                      className="w-full h-full object-cover"
-                    />
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <span className="text-blue-600 font-bold">₦</span>
                   </div>
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {selectedRequest.laptops.brand}{" "}
-                      {selectedRequest.laptops.name}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {[
-                        selectedRequest.laptops.cpu,
-                        selectedRequest.laptops.ram_gb
-                          ? `${selectedRequest.laptops.ram_gb}GB RAM`
-                          : null,
-                        selectedRequest.laptops.storage_gb
-                          ? `${selectedRequest.laptops.storage_gb}GB Storage`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </div>
-                    <div className="text-lg font-semibold mt-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Value</p>
+                    <p className="text-2xl font-bold">
                       ₦
                       {Math.round(
-                        selectedRequest.laptops.price_cents / 100
+                        requests.reduce(
+                          (sum, r) => sum + r.requested_amount_cents,
+                          0
+                        ) / 100
                       ).toLocaleString()}
-                    </div>
+                    </p>
                   </div>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Financial Details */}
-              <div>
-                <h4 className="font-medium mb-3">Financial Details</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Loan Amount</span>
-                      <span className="font-semibold">
-                        ₦
-                        {Math.round(
-                          selectedRequest.requested_amount_cents / 100
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Duration</span>
-                      <span>{selectedRequest.duration_months} months</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Interest Rate</span>
-                      <span>{interestRate}% APR</span>
-                    </div>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <span className="text-green-600 font-bold">Avg</span>
                   </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Monthly Payment</span>
-                      <span className="font-semibold">
-                        ₦
-                        {Math.round(
-                          calculateMonthlyPayment(
-                            selectedRequest.requested_amount_cents / 100,
-                            selectedRequest.duration_months,
-                            interestRate
-                          )
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Total Amount</span>
-                      <span>
-                        ₦
-                        {Math.round(
-                          calculateMonthlyPayment(
-                            selectedRequest.requested_amount_cents / 100,
-                            selectedRequest.duration_months,
-                            interestRate
-                          ) * selectedRequest.duration_months
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b">
-                      <span>Total Interest</span>
-                      <span>
-                        ₦
-                        {Math.round(
-                          calculateMonthlyPayment(
-                            selectedRequest.requested_amount_cents / 100,
-                            selectedRequest.duration_months,
-                            interestRate
-                          ) *
-                            selectedRequest.duration_months -
-                          selectedRequest.requested_amount_cents / 100
-                        ).toLocaleString()}
-                      </span>
-                    </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Average Duration
+                    </p>
+                    <p className="text-2xl font-bold">
+                      {Math.round(
+                        requests.reduce(
+                          (sum, r) => sum + r.duration_months,
+                          0
+                        ) / requests.length
+                      )}{" "}
+                      mo
+                    </p>
                   </div>
                 </div>
-              </div>
-
-              {/* Status and Timeline */}
-              <div>
-                <h4 className="font-medium mb-3">Request Status</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      Submitted:{" "}
-                      {new Date(selectedRequest.created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  {selectedRequest.decided_at && (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        Decided:{" "}
-                        {new Date(selectedRequest.decided_at).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="mt-3">
-                    {(() => {
-                      const statusInfo = getStatusInfo(selectedRequest.status);
-                      const StatusIcon = statusInfo.icon;
-                      return (
-                        <Badge
-                          variant={statusInfo.variant}
-                          className={statusInfo.color}
-                        >
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {statusInfo.label}
-                        </Badge>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDetailsDialogOpen(false)}
-            >
-              Close
-            </Button>
-            {selectedRequest?.status === "pending" && (
-              <>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    setIsDetailsDialogOpen(false);
-                    handleRequestAction(selectedRequest, "reject");
-                  }}
-                >
-                  <XCircle className="h-4 w-4 mr-1" />
-                  Reject
-                </Button>
-                <Button
-                  onClick={() => {
-                    setIsDetailsDialogOpen(false);
-                    handleRequestAction(selectedRequest, "approve");
-                  }}
-                >
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  Approve
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Action Confirmation Dialog */}
-      <AlertDialog
-        open={!!actionRequest}
-        onOpenChange={() => setActionRequest(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {actionRequest?.action === "approve"
-                ? "Approve Request"
-                : "Reject Request"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {actionRequest?.action === "approve"
-                ? "This will approve the financing request and allow the employee to proceed with the loan."
-                : "This will reject the financing request. The employee will be notified of the decision."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmAction}
-              disabled={updateRequestMutation.isPending}
-              className={
-                actionRequest?.action === "reject"
-                  ? "bg-destructive hover:bg-destructive/90"
-                  : ""
-              }
-            >
-              {updateRequestMutation.isPending
-                ? "Processing..."
-                : actionRequest?.action === "approve"
-                ? "Approve Request"
-                : "Reject Request"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </AppLayout>
   );
 };
