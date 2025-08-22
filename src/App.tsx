@@ -11,6 +11,7 @@ import SuperDashboard from "@/pages/super/SuperDashboard";
 import AdminDashboard from "@/pages/company/AdminDashboard";
 import EmployeePortal from "@/pages/employee/EmployeePortal";
 import SuperCompanies from "@/pages/super/Companies";
+import CompanyDetails from "@/pages/super/CompanyDetails";
 import SuperUsers from "@/pages/super/Users";
 import AdminCatalog from "@/pages/company/Catalog";
 import AdminPolicies from "@/pages/company/Policies";
@@ -30,111 +31,119 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <CompanyProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/accept-invite" element={<AcceptInvite />} />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/accept-invite" element={<AcceptInvite />} />
 
-            <Route
-              path="/super"
-              element={
-                <ProtectedRoute roles={["super_admin"]}>
-                  <SuperDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/employee"
-              element={
-                <ProtectedRoute roles={["employee"]}>
-                  <EmployeePortal />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/super"
+                element={
+                  <ProtectedRoute roles={["super_admin"]}>
+                    <SuperDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/employee"
+                element={
+                  <ProtectedRoute roles={["employee"]}>
+                    <EmployeePortal />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Super Admin nested pages */}
-            <Route
-              path="/super/companies"
-              element={
-                <ProtectedRoute roles={["super_admin"]}>
-                  <SuperCompanies />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/super/users"
-              element={
-                <ProtectedRoute roles={["super_admin"]}>
-                  <SuperUsers />
-                </ProtectedRoute>
-              }
-            />
+              {/* Super Admin nested pages */}
+              <Route
+                path="/super/companies"
+                element={
+                  <ProtectedRoute roles={["super_admin"]}>
+                    <SuperCompanies />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/super/companies/:companyId"
+                element={
+                  <ProtectedRoute roles={["super_admin"]}>
+                    <CompanyDetails />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/super/users"
+                element={
+                  <ProtectedRoute roles={["super_admin"]}>
+                    <SuperUsers />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Company Admin nested pages */}
-            <Route
-              path="/admin/catalog"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <AdminCatalog />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/policies"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <AdminPolicies />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/requests"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <AdminRequests />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/users"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <CompanyUsers />
-                </ProtectedRoute>
-              }
-            />
+              {/* Company Admin nested pages */}
+              <Route
+                path="/admin/catalog"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <AdminCatalog />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/policies"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <AdminPolicies />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/requests"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <AdminRequests />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/users"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <CompanyUsers />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Employee nested pages */}
-            <Route
-              path="/employee/catalog"
-              element={
-                <ProtectedRoute roles={["employee"]}>
-                  <EmployeeCatalog />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/employee/repayments"
-              element={
-                <ProtectedRoute roles={["employee"]}>
-                  <EmployeeRepayments />
-                </ProtectedRoute>
-              }
-            />
+              {/* Employee nested pages */}
+              <Route
+                path="/employee/catalog"
+                element={
+                  <ProtectedRoute roles={["employee"]}>
+                    <EmployeeCatalog />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/employee/repayments"
+                element={
+                  <ProtectedRoute roles={["employee"]}>
+                    <EmployeeRepayments />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
         </CompanyProvider>
       </AuthProvider>
     </TooltipProvider>
