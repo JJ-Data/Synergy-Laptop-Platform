@@ -233,7 +233,7 @@ const Companies = () => {
       if (data.sendEmail) {
         try {
           const { data: emailResult, error: emailError } =
-            await supabase.functions.invoke("send-invitation-email", {
+            await supabase.functions.invoke("send-email", {
               body: {
                 email: data.email,
                 token,
