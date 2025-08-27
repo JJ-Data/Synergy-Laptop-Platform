@@ -40,7 +40,7 @@ const Index = () => {
             {/* LEFT: copy */}
             <div className="max-w-xl">
               <h1 className="text-4xl md:text-5xl font-semibold leading-tight tracking-tight">
-                Synergy laptop financing, simplified for every company
+                Synergy laptop financing
               </h1>
 
               <p className="mt-4 text-lg text-muted-foreground">
@@ -61,21 +61,17 @@ const Index = () => {
                     Get Started
                   </Link>
                 </Button>
-
-                <Button asChild variant="outline" size="lg">
-                  <Link to="/register">Create Company</Link>
-                </Button>
               </div>
 
               {/* Inline highlights (replaces the old bottom section) */}
               <div className="mt-8 flex flex-wrap gap-3">
                 <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Multi-tenant
+                  Multi-Company
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
                   <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                  RLS-secured
+                  Secured
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
                   <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
@@ -110,7 +106,7 @@ const Index = () => {
                     <p className="text-2xl font-semibold">{companies}</p>
                     <div className="mt-2 flex items-center gap-2 text-xs">
                       <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                      98.4% on-time repayments
+                      Admin
                     </div>
                   </div>
                 </div>
