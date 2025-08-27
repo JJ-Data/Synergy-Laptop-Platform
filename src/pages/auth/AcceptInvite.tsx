@@ -1,5 +1,5 @@
-// Fixed AcceptInvite.tsx - Uses validation function instead of direct table access
-// Replace your current AcceptInvite component with this version
+// Enhanced AcceptInvite.tsx with better auth handling
+// Replace src/pages/auth/AcceptInvite.tsx with this version
 
 import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
@@ -59,7 +59,7 @@ const AcceptInvite = () => {
       try {
         setStatus("checking");
 
-        // Use the validation function instead of direct table access
+        // Use the validation function
         debugLog("2. Calling validate_invitation_token function", { token });
 
         const { data: validationResult, error: validationError } =
@@ -194,11 +194,13 @@ const AcceptInvite = () => {
 
     try {
       if (isSignUp) {
+        // Custom signup with proper redirect
         const { data, error } = await supabase.auth.signUp({
           email: email,
           password: password,
           options: {
-            emailRedirectTo: `${window.location.origin}/accept-invite?token=${token}`,
+            // Use current page as redirect to avoid localhost redirect
+            emailRedirectTo: window.location.href,
           },
         });
 
@@ -207,22 +209,23 @@ const AcceptInvite = () => {
         if (error) {
           toast.error(error.message);
         } else if (data?.user?.identities?.length === 0) {
-          toast.error(
+          // Account already exists
+          toast.info(
             "An account with this email already exists. Please sign in instead."
           );
           setIsSignUp(false);
+        } else if (data.user && !data.session) {
+          // Email confirmation required
+          toast.success(
+            "Account created! Please check your email to verify your account, then return to this page."
+          );
         } else {
-          // Check if email confirmation is required
-          if (data.user && !data.session) {
-            toast.success(
-              "Account created! Please check your email to verify, then return here."
-            );
-          } else {
-            toast.success("Account created successfully!");
-            // The useEffect will trigger and accept the invitation
-          }
+          // Account created and confirmed
+          toast.success("Account created successfully!");
+          // The useEffect will trigger and accept the invitation
         }
       } else {
+        // Sign in
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
@@ -277,18 +280,6 @@ const AcceptInvite = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{message}</AlertDescription>
             </Alert>
-
-            {/* Debug Information - only show in development */}
-            {process.env.NODE_ENV === "development" && (
-              <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">
-                  Debug Information (Dev Only)
-                </summary>
-                <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-40">
-                  {JSON.stringify(debugInfo, null, 2)}
-                </pre>
-              </details>
-            )}
 
             <div className="flex gap-3">
               <Button asChild variant="outline" className="flex-1">
@@ -353,7 +344,9 @@ const AcceptInvite = () => {
 
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>You're Invited!</CardTitle>
+          <CardTitle>
+            You're Invited to {inviteDetails?.company_name}!
+          </CardTitle>
           <CardDescription>
             You've been invited to join{" "}
             <strong>{inviteDetails?.company_name || "our platform"}</strong> as{" "}
@@ -441,18 +434,6 @@ const AcceptInvite = () => {
               </button>
             </div>
           </form>
-
-          {/* Debug Information - only show in development */}
-          {process.env.NODE_ENV === "development" && debugInfo && (
-            <details className="mt-4 text-xs text-muted-foreground">
-              <summary className="cursor-pointer">
-                Debug Information (Dev Only)
-              </summary>
-              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-40">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            </details>
-          )}
         </CardContent>
       </Card>
     </div>
