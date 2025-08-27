@@ -72,7 +72,7 @@ type LaptopFormData = z.infer<typeof laptopSchema>;
 type InviteFormData = z.infer<typeof inviteSchema>;
 
 const AdminDashboard = () => {
-  const { companyId } = useCompany();
+  const { companyId, company } = useCompany();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLaptopDialogOpen, setIsLaptopDialogOpen] = useState(false);
@@ -163,19 +163,82 @@ const AdminDashboard = () => {
     enabled: !!companyId,
   });
 
-  // Invite employee mutation
+  // Fixed invite employee mutation with proper email integration
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteFormData) => {
       if (!companyId) throw new Error("No company selected");
 
-      const { data: result, error } = await supabase.rpc("create_invitation", {
+      // Create invitation
+      const { data: token, error } = await supabase.rpc("create_invitation", {
         _email: data.email,
         _role: "employee",
         _company_id: companyId,
       });
 
       if (error) throw error;
-      return result;
+
+      // Send email notification
+      try {
+        const invitationLink = `${window.location.origin}/accept-invite?token=${token}`;
+
+        const emailSubject = `Welcome to ${company?.name} - Employee Access Granted`;
+        const emailBody = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Welcome to ${company?.name}!</h2>
+            
+            <p>Hello,</p>
+            
+            <p>You've been granted employee access to <strong>${company?.name}</strong>'s laptop financing platform.</p>
+            
+            <p>As an employee, you can:</p>
+            <ul>
+              <li>Browse approved laptop models</li>
+              <li>Submit financing requests</li>
+              <li>Track your repayment schedule</li>
+              <li>Manage your loan details</li>
+            </ul>
+            
+            <div style="margin: 30px 0;">
+              <a href="${invitationLink}" 
+                 style="background-color: #28a745; color: white; padding: 12px 24px; 
+                        text-decoration: none; border-radius: 5px; display: inline-block;">
+                Access Your Account
+              </a>
+            </div>
+            
+            <p style="color: #666; font-size: 14px;">
+              This invitation will expire in 7 days. If you have any questions, please contact your administrator.
+            </p>
+            
+            <p style="color: #666; font-size: 12px;">
+              If you can't click the button above, copy and paste this link into your browser:<br>
+              <a href="${invitationLink}">${invitationLink}</a>
+            </p>
+          </div>
+        `;
+
+        const { error: emailError } = await supabase.functions.invoke(
+          "send-email",
+          {
+            body: {
+              to: data.email,
+              subject: emailSubject,
+              body: emailBody,
+              from: "noreply@mustardhr.ng",
+              fromName: company?.name || "Company Admin",
+            },
+          }
+        );
+
+        if (emailError) {
+          console.warn("Email sending failed:", emailError);
+          toast.warning("Invitation created but email sending failed.");
+        }
+      } catch (emailErr) {
+        console.warn("Email service error:", emailErr);
+      }
+
+      return token;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users-count"] });

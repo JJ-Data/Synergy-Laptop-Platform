@@ -7,7 +7,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Seo
-        title="Multi‑Tenant Laptop Financing Platform"
+        title="Laptop Financing Platform"
         description="Manage company devices, approvals, and repayments across tenants with role-based access."
         canonical="/"
       />
@@ -26,14 +26,20 @@ const Index = () => {
         <div className="container py-24 md:py-32">
           <div className="max-w-2xl">
             <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
-              Laptop financing, simplified for every company
+              Enterprise laptop financing, simplified for every company
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
-              A secure, multi‑tenant platform for Super Admins, Company Admins, and Employees to manage devices,
-              approvals, and repayments with clarity.
+              A secure, multi‑tenant platform for administrators and employees
+              to manage devices, approvals, and repayments with complete
+              transparency.
             </p>
             <div className="mt-8 flex flex-wrap gap-4 items-center">
-              <Button asChild variant="hero" size="lg" className="relative overflow-hidden">
+              <Button
+                asChild
+                variant="hero"
+                size="lg"
+                className="relative overflow-hidden"
+              >
                 <Link to="/login">
                   <span className="pointer-events-none absolute inset-y-0 left-[-100%] w-1/3 bg-foreground/10 blur-md animate-shine" />
                   Get Started
@@ -50,21 +56,24 @@ const Index = () => {
       <section id="features" className="container py-16 md:py-20">
         <div className="grid md:grid-cols-3 gap-8">
           <article>
-            <h3 className="text-xl font-semibold">Super Admin</h3>
+            <h3 className="text-xl font-semibold">Platform Administrator</h3>
             <p className="text-muted-foreground mt-2">
-              Onboard companies, assign admins, and view repayment performance across tenants.
+              Onboard companies, assign administrators, and view performance
+              metrics across all tenants.
             </p>
           </article>
           <article>
-            <h3 className="text-xl font-semibold">Company Admin</h3>
+            <h3 className="text-xl font-semibold">Company Administrator</h3>
             <p className="text-muted-foreground mt-2">
-              Manage laptop catalogs, policies, employee requests, and payroll schedules.
+              Manage laptop catalogs, financing policies, employee requests, and
+              repayment schedules.
             </p>
           </article>
           <article>
-            <h3 className="text-xl font-semibold">Employee</h3>
+            <h3 className="text-xl font-semibold">Employee Access</h3>
             <p className="text-muted-foreground mt-2">
-              Choose a laptop, select a repayment plan, and track your progress to ownership.
+              Browse approved laptops, submit financing requests, and track
+              repayment progress.
             </p>
           </article>
         </div>

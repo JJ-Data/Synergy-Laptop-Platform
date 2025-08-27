@@ -232,14 +232,56 @@ const Companies = () => {
       // Send email if requested
       if (data.sendEmail) {
         try {
+          // Prepare email content
+          const emailSubject = `Invitation to join ${inviteFor.name} as Administrator`;
+          const emailBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">You're invited to ${inviteFor.name}!</h2>
+              
+              <p>Hello,</p>
+              
+              <p>You've been invited to join <strong>${
+                inviteFor.name
+              }</strong> as a Company Administrator on our laptop financing platform.</p>
+              
+              ${
+                data.personalMessage
+                  ? `
+                <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0;">
+                  <p style="margin: 0; font-style: italic;">"${data.personalMessage}"</p>
+                </div>
+              `
+                  : ""
+              }
+              
+              <div style="margin: 30px 0;">
+                <a href="${invitationLink}" 
+                   style="background-color: #007bff; color: white; padding: 12px 24px; 
+                          text-decoration: none; border-radius: 5px; display: inline-block;">
+                  Accept Invitation
+                </a>
+              </div>
+              
+              <p style="color: #666; font-size: 14px;">
+                This invitation will expire in 7 days. If you have any questions, please contact your administrator.
+              </p>
+              
+              <p style="color: #666; font-size: 12px;">
+                If you can't click the button above, copy and paste this link into your browser:<br>
+                <a href="${invitationLink}">${invitationLink}</a>
+              </p>
+            </div>
+          `;
+
+          // Call the edge function with correct parameters
           const { data: emailResult, error: emailError } =
             await supabase.functions.invoke("send-email", {
               body: {
-                email: data.email,
-                token,
-                companyName: inviteFor.name,
-                inviterName: "Super Admin", // You can get this from user context
-                personalMessage: data.personalMessage,
+                to: data.email,
+                subject: emailSubject,
+                body: emailBody,
+                from: "noreply@mustardhr.ng",
+                fromName: inviteFor.name, // Use company name as sender
               },
             });
 
