@@ -164,9 +164,19 @@ const AdminDashboard = () => {
   });
 
   // Fixed invite employee mutation with proper email integration
+  // Replace the inviteMutation in src/pages/company/AdminDashboard.tsx
+  // with this enhanced version with better error handling
+
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteFormData) => {
       if (!companyId) throw new Error("No company selected");
+
+      console.log(
+        "Creating invitation for employee:",
+        data.email,
+        "at company:",
+        companyId
+      );
 
       // Create invitation
       const { data: token, error } = await supabase.rpc("create_invitation", {
@@ -175,7 +185,12 @@ const AdminDashboard = () => {
         _company_id: companyId,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Failed to create invitation:", error);
+        throw error;
+      }
+
+      console.log("Invitation created, token:", token);
 
       // Send email notification
       try {
@@ -183,70 +198,94 @@ const AdminDashboard = () => {
 
         const emailSubject = `Welcome to ${company?.name} - Employee Access Granted`;
         const emailBody = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Welcome to ${company?.name}!</h2>
-            
-            <p>Hello,</p>
-            
-            <p>You've been granted employee access to <strong>${company?.name}</strong>'s laptop financing platform.</p>
-            
-            <p>As an employee, you can:</p>
-            <ul>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333; text-align: center;">Welcome to ${company?.name}!</h2>
+          
+          <p>Hello,</p>
+          
+          <p>You've been granted employee access to <strong>${company?.name}</strong>'s laptop financing platform.</p>
+          
+          <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #333; margin-top: 0;">What you can do:</h3>
+            <ul style="color: #666;">
               <li>Browse approved laptop models</li>
               <li>Submit financing requests</li>
               <li>Track your repayment schedule</li>
               <li>Manage your loan details</li>
             </ul>
-            
-            <div style="margin: 30px 0;">
-              <a href="${invitationLink}" 
-                 style="background-color: #28a745; color: white; padding: 12px 24px; 
-                        text-decoration: none; border-radius: 5px; display: inline-block;">
-                Access Your Account
-              </a>
-            </div>
-            
-            <p style="color: #666; font-size: 14px;">
-              This invitation will expire in 7 days. If you have any questions, please contact your administrator.
-            </p>
-            
-            <p style="color: #666; font-size: 12px;">
-              If you can't click the button above, copy and paste this link into your browser:<br>
-              <a href="${invitationLink}">${invitationLink}</a>
-            </p>
           </div>
-        `;
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${invitationLink}" 
+               style="background-color: #28a745; color: white; padding: 15px 30px; 
+                      text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+              Access Your Account
+            </a>
+          </div>
+          
+          <p style="color: #666; font-size: 14px; text-align: center;">
+            This invitation will expire in 7 days. If you have any questions, please contact your administrator.
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+          
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            If you can't click the button above, copy and paste this link into your browser:<br>
+            <a href="${invitationLink}" style="color: #007bff;">${invitationLink}</a>
+          </p>
+        </div>
+      `;
 
-        const { error: emailError } = await supabase.functions.invoke(
-          "send-email",
-          {
-            body: {
-              to: data.email,
-              subject: emailSubject,
-              body: emailBody,
-              from: "noreply@mustardhr.ng",
-              fromName: company?.name || "Company Admin",
-            },
-          }
-        );
+        const emailPayload = {
+          to: data.email,
+          subject: emailSubject,
+          body: emailBody,
+          from: "noreply@mustardhr.ng",
+          fromName: company?.name || "Company Admin",
+        };
+
+        console.log("Sending email with payload:", emailPayload);
+
+        const { data: emailResult, error: emailError } =
+          await supabase.functions.invoke("send-email", {
+            body: emailPayload,
+          });
+
+        console.log("Email function result:", emailResult);
+        console.log("Email function error:", emailError);
 
         if (emailError) {
-          console.warn("Email sending failed:", emailError);
-          toast.warning("Invitation created but email sending failed.");
+          console.error("Email sending failed:", emailError);
+          toast.warning(
+            `Invitation created successfully, but email sending failed: ${
+              emailError.message || "Unknown error"
+            }. Please share the invitation link manually.`
+          );
+        } else {
+          console.log("Email sent successfully");
+          toast.success(
+            "Employee invitation sent successfully! Check your email logs for confirmation."
+          );
         }
-      } catch (emailErr) {
-        console.warn("Email service error:", emailErr);
+      } catch (emailErr: any) {
+        console.error("Email service error:", emailErr);
+        toast.warning(
+          `Invitation created successfully, but email service error: ${
+            emailErr.message || "Unknown error"
+          }. Please share the invitation link manually.`
+        );
       }
 
       return token;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users-count"] });
-      toast.success("Employee invitation sent successfully!");
+      toast.success("Employee invitation processed!");
       setIsInviteDialogOpen(false);
       inviteForm.reset();
     },
     onError: (error) => {
+      console.error("Invitation mutation error:", error);
       toast.error("Failed to send invitation: " + error.message);
     },
   });
