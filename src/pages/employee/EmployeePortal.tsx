@@ -1,3 +1,4 @@
+// src/pages/employee/EmployeePortal.tsx
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,7 +44,12 @@ import {
   AlertCircle,
   FileText,
   Laptop,
+  Building,
+  User,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { Tables } from "@/integrations/supabase/types";
 
 // Helper function to calculate monthly payment
@@ -95,23 +102,70 @@ function getRequestStatusInfo(status: string) {
 }
 
 const EmployeePortal = () => {
-  const { companyId } = useCompany();
+  const { companyId, company, loading: companyLoading } = useCompany();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedLaptopId, setSelectedLaptopId] = useState<string | null>(null);
   const [selectedDuration, setSelectedDuration] = useState(12);
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+
+  // Debug: Log context values
+  console.log("Employee Portal Debug:", {
+    companyId,
+    company,
+    user,
+    userRole: user?.role,
+    userCompanyId: user?.companyId,
+    companyLoading,
+  });
+
+  // Force refresh user context
+  const refreshUserContext = async () => {
+    try {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+      console.log("Current auth user:", currentUser);
+
+      if (currentUser) {
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role, company_id")
+          .eq("user_id", currentUser.id);
+
+        console.log("User roles:", roles);
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", currentUser.id)
+          .single();
+
+        console.log("User profile:", profile);
+      }
+
+      // Force a page reload to refresh context
+      window.location.reload();
+    } catch (error) {
+      console.error("Error refreshing user context:", error);
+    }
+  };
 
   // Fetch company policy
   const { data: policy } = useQuery({
     queryKey: ["policy", companyId],
     queryFn: async () => {
       if (!companyId) return null;
+      console.log("Fetching policy for company:", companyId);
+
       const { data, error } = await supabase
         .from("policies")
         .select("interest_rate, durations_months, max_amount_cents")
         .eq("company_id", companyId)
         .maybeSingle();
+
+      console.log("Policy result:", { data, error });
       if (error) throw error;
       return data;
     },
@@ -119,16 +173,24 @@ const EmployeePortal = () => {
   });
 
   // Fetch available laptops
-  const { data: laptops, isLoading: loadingLaptops } = useQuery({
-    queryKey: ["laptops", companyId],
+  const {
+    data: laptops,
+    isLoading: loadingLaptops,
+    error: laptopsError,
+  } = useQuery({
+    queryKey: ["employee-laptops", companyId],
     queryFn: async () => {
       if (!companyId) return [] as Tables<"laptops">[];
+      console.log("Fetching laptops for company:", companyId);
+
       const { data, error } = await supabase
         .from("laptops")
         .select("*")
         .eq("company_id", companyId)
         .eq("active", true)
         .order("created_at", { ascending: false });
+
+      console.log("Laptops result:", { data, error, count: data?.length });
       if (error) throw error;
       return data ?? [];
     },
@@ -140,6 +202,8 @@ const EmployeePortal = () => {
     queryKey: ["user-requests", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
+      console.log("Fetching requests for user:", user.id);
+
       const { data, error } = await supabase
         .from("requests")
         .select(
@@ -150,6 +214,8 @@ const EmployeePortal = () => {
         )
         .eq("employee_id", user.id)
         .order("created_at", { ascending: false });
+
+      console.log("User requests result:", { data, error });
       if (error) throw error;
       return data ?? [];
     },
@@ -178,6 +244,14 @@ const EmployeePortal = () => {
       const laptop = laptops?.find((l) => l.id === laptopId);
       if (!laptop) throw new Error("Laptop not found");
 
+      console.log("Submitting request:", {
+        companyId,
+        employeeId: user.id,
+        laptopId,
+        requestedAmountCents: laptop.price_cents,
+        durationMonths: duration,
+      });
+
       const { error } = await supabase.from("requests").insert([
         {
           company_id: companyId,
@@ -196,6 +270,7 @@ const EmployeePortal = () => {
       setIsRequestDialogOpen(false);
     },
     onError: (error) => {
+      console.error("Submit request error:", error);
       toast.error("Failed to submit request: " + error.message);
     },
   });
@@ -248,6 +323,128 @@ const EmployeePortal = () => {
     (req) => req.status === "pending"
   );
 
+  // Loading state
+  if (companyLoading) {
+    return (
+      <AppLayout title="Employee Portal">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Clock className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-muted-foreground">Loading your portal...</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // No company context - show debugging info
+  if (!companyId || !user) {
+    return (
+      <AppLayout title="Employee Portal">
+        <Seo
+          title="Employee | Portal"
+          description="Employee laptop financing portal."
+          canonical="/employee"
+        />
+
+        <div className="space-y-6">
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <span>
+                  Unable to load your company information. This may be due to:
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                  >
+                    Debug Info
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refreshUserContext}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              <ul className="mt-2 text-sm list-disc list-inside space-y-1">
+                <li>You haven't been assigned to a company</li>
+                <li>Your employee invitation wasn't properly accepted</li>
+                <li>There's an issue with your account setup</li>
+              </ul>
+
+              {showDebugInfo && (
+                <details className="mt-4 text-xs bg-muted p-3 rounded">
+                  <summary className="font-medium cursor-pointer">
+                    Debug Information
+                  </summary>
+                  <pre className="mt-2 overflow-auto">
+                    {JSON.stringify(
+                      {
+                        user: user
+                          ? {
+                              id: user.id,
+                              email: user.email,
+                              role: user.role,
+                              companyId: user.companyId,
+                            }
+                          : null,
+                        companyId,
+                        company: company
+                          ? {
+                              id: company.id,
+                              name: company.name,
+                            }
+                          : null,
+                        companyLoading,
+                      },
+                      null,
+                      2
+                    )}
+                  </pre>
+                </details>
+              )}
+            </AlertDescription>
+          </Alert>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>What to do next:</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                1. Contact your company administrator to ensure you have been
+                invited as an employee
+              </p>
+              <p className="text-sm text-muted-foreground">
+                2. Check your email for an invitation link and make sure you
+                accepted it properly
+              </p>
+              <p className="text-sm text-muted-foreground">
+                3. Try logging out and logging back in
+              </p>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" asChild>
+                  <Link to="/login">Re-login</Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <a href="mailto:support@company.com">Contact Support</a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout title="Employee Portal">
       <Seo
@@ -257,6 +454,37 @@ const EmployeePortal = () => {
       />
 
       <div className="space-y-8">
+        {/* Company Context Header */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Building className="h-5 w-5 text-blue-600" />
+                <div>
+                  <div className="font-medium">{company?.name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    Welcome back, {user.name}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/employee/catalog">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Browse Catalog
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/employee/repayments">
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    My Repayments
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Current Requests Status */}
         {userRequests && userRequests.length > 0 && (
           <Card>
@@ -287,7 +515,15 @@ const EmployeePortal = () => {
                       >
                         <div className="flex items-center gap-4">
                           <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
-                            <Laptop className="h-8 w-8 text-muted-foreground" />
+                            {request.laptops?.image_url ? (
+                              <img
+                                src={request.laptops.image_url}
+                                alt="Laptop"
+                                className="w-full h-full object-cover rounded-lg"
+                              />
+                            ) : (
+                              <Laptop className="h-8 w-8 text-muted-foreground" />
+                            )}
                           </div>
                           <div>
                             <div className="font-medium">
@@ -323,6 +559,16 @@ const EmployeePortal = () => {
           </Card>
         )}
 
+        {/* Error handling */}
+        {laptopsError && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Error loading laptops: {laptopsError.message}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Main Selection Interface */}
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Laptop Selection */}
@@ -334,22 +580,19 @@ const EmployeePortal = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {!companyId && (
-                <div className="text-sm text-muted-foreground">
-                  No company context.
-                </div>
-              )}
-              {companyId && loadingLaptops && (
+              {loadingLaptops ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Loading laptops...
                 </div>
-              )}
-              {companyId && !loadingLaptops && (laptops?.length ?? 0) === 0 && (
+              ) : !laptops || laptops.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No laptops available yet. Contact your admin.
+                  <Laptop className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No laptops available yet.</p>
+                  <p className="text-sm mt-2">
+                    Contact your admin to add devices.
+                  </p>
                 </div>
-              )}
-              {companyId && laptops && laptops.length > 0 && (
+              ) : (
                 <div className="grid gap-4">
                   {laptops.map((laptop) => (
                     <button
