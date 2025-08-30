@@ -333,9 +333,9 @@ const Requests = () => {
         if (repaymentsError) throw repaymentsError;
       }
     },
-    onSuccess: (_, { status }) => {
+    onSuccess: (_, { action }) => {
       queryClient.invalidateQueries({ queryKey: ["company-requests"] });
-      if (status === "approved") {
+      if (action === "approve") {
         toast.success("Request approved and loan created successfully!");
       } else {
         toast.success("Request rejected successfully");
@@ -359,7 +359,7 @@ const Requests = () => {
     if (!actionRequest) return;
     updateRequestMutation.mutate({
       requestId: actionRequest.request.id,
-      status: actionRequest.action,
+      action: actionRequest.action,
     });
   };
 
