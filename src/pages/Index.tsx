@@ -1,7 +1,7 @@
-// src/pages/Index.tsx - Fixed version without missing assets
 import { Link } from "react-router-dom";
 import Seo from "@/components/seo/Seo";
 import { Button } from "@/components/ui/button";
+import heroImage from "@/assets/hero-finance.jpg";
 import * as React from "react";
 
 const Index = () => {
@@ -88,32 +88,14 @@ const Index = () => {
                 <div className="absolute h-64 w-64 md:h-80 md:w-80 rounded-full border border-primary/20 animate-spin [animation-duration:14s]" />
               </div>
 
-              {/* Image card with subtle tilt - using placeholder instead of missing asset */}
+              {/* Image card with subtle tilt */}
               <div className="group relative mx-auto w-[90%] max-w-lg rounded-2xl border bg-card/80 backdrop-blur-md shadow-sm ring-1 ring-border transition-transform duration-300 hover:-translate-y-1">
-                {/* Placeholder for hero image */}
-                <div className="aspect-[16/10] w-full rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                  <div className="text-center p-8">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-                      <svg
-                        className="w-8 h-8 text-primary"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                        />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold">Laptop Financing</h3>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Streamlined device management and approvals
-                    </p>
-                  </div>
-                </div>
+                <img
+                  src={heroImage}
+                  alt="Laptop financing dashboard preview"
+                  className="aspect-[16/10] w-full rounded-2xl object-cover"
+                  loading="lazy"
+                />
 
                 {/* Floating KPI card */}
                 <div className="absolute -bottom-6 left-6">
