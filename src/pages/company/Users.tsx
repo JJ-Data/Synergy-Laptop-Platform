@@ -1,4 +1,4 @@
-// src/pages/company/Users.tsx - Fixed version without admin auth requirements
+// src/pages/company/Users.tsx - Fixed version without foreign key dependencies
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { useState } from "react";
@@ -24,13 +24,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -55,20 +48,19 @@ import {
   Mail,
   Shield,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
-// Simplified user type that doesn't require admin auth
+// Simplified user type
 type CompanyUser = {
   user_id: string;
   role: string;
   created_at: string;
   display_name?: string;
   profile_created_at?: string;
-  // Note: Email won't be available without admin privileges
-  // This is a limitation we'll have to work with
 };
 
 const inviteSchema = z.object({
@@ -90,7 +82,7 @@ const Users = () => {
     },
   });
 
-  // FIXED: Simplified user query that works without admin privileges
+  // FIXED: Separate queries without foreign key dependencies
   const {
     data: users = [],
     isLoading,
@@ -102,51 +94,69 @@ const Users = () => {
 
       console.log("Fetching users for company:", companyId);
 
-      // Get user roles for this company with profile information
-      const { data: userRoles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select(
-          `
-          user_id,
-          role,
-          created_at,
-          profiles:user_id (
-            display_name,
-            created_at
-          )
-        `
-        )
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false });
+      try {
+        // Step 1: Get user roles for this company
+        const { data: userRoles, error: rolesError } = await supabase
+          .from("user_roles")
+          .select("user_id, role, created_at")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false });
 
-      if (rolesError) {
-        console.error("Error fetching user roles:", rolesError);
-        throw rolesError;
+        if (rolesError) {
+          console.error("Error fetching user roles:", rolesError);
+          throw new Error(`Failed to fetch user roles: ${rolesError.message}`);
+        }
+
+        console.log("Found user roles:", userRoles?.length || 0);
+
+        if (!userRoles || userRoles.length === 0) {
+          return [];
+        }
+
+        // Step 2: Get profile information for each user
+        const userIds = userRoles.map((role) => role.user_id);
+
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, display_name, created_at")
+          .in("id", userIds);
+
+        if (profilesError) {
+          console.error("Error fetching profiles:", profilesError);
+          // Don't throw error for profiles - we can still show users without profile info
+        }
+
+        console.log("Found profiles:", profiles?.length || 0);
+
+        // Step 3: Combine the data
+        const companyUsers: CompanyUser[] = userRoles
+          .map((roleData) => {
+            const profile = profiles?.find((p) => p.id === roleData.user_id);
+
+            return {
+              user_id: roleData.user_id,
+              role: roleData.role,
+              created_at: roleData.created_at,
+              display_name: profile?.display_name,
+              profile_created_at: profile?.created_at,
+            };
+          })
+          .filter((user) => {
+            if (!searchTerm) return true;
+            // Search by display name or user ID
+            const searchLower = searchTerm.toLowerCase();
+            return (
+              user.display_name?.toLowerCase().includes(searchLower) ||
+              user.user_id.toLowerCase().includes(searchLower)
+            );
+          });
+
+        console.log("Final processed users:", companyUsers.length);
+        return companyUsers;
+      } catch (error: any) {
+        console.error("Error in users query:", error);
+        throw error;
       }
-
-      console.log("Found user roles:", userRoles?.length || 0);
-
-      if (!userRoles || userRoles.length === 0) return [];
-
-      // Transform the data to match our simplified type
-      const companyUsers: CompanyUser[] = userRoles
-        .map((roleData: any) => ({
-          user_id: roleData.user_id,
-          role: roleData.role,
-          created_at: roleData.created_at,
-          display_name: roleData.profiles?.display_name,
-          profile_created_at: roleData.profiles?.created_at,
-        }))
-        .filter((user) => {
-          if (!searchTerm) return true;
-          // Only search by display name since we don't have email access
-          return user.display_name
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase());
-        });
-
-      console.log("Processed users:", companyUsers.length);
-      return companyUsers;
     },
     enabled: !!companyId,
     retry: 3,
@@ -156,12 +166,18 @@ const Users = () => {
   // Update role mutation
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      console.log("Updating role for user:", { userId, role, companyId });
+
       const { error } = await supabase
         .from("user_roles")
         .update({ role: role as any })
         .eq("user_id", userId)
         .eq("company_id", companyId);
-      if (error) throw error;
+
+      if (error) {
+        console.error("Role update error:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["company-users"] });
@@ -169,8 +185,8 @@ const Users = () => {
       setSelectedUser(null);
       setNewRole("");
     },
-    onError: (error) => {
-      console.error("Role update error:", error);
+    onError: (error: any) => {
+      console.error("Role update failed:", error);
       toast.error("Failed to update role: " + error.message);
     },
   });
@@ -180,10 +196,10 @@ const Users = () => {
     mutationFn: async ({ email }: { email: string }) => {
       if (!companyId) throw new Error("No company selected");
 
-      console.log("Creating invitation for:", email);
+      console.log("Creating invitation for:", email, "to company:", companyId);
 
       const { data, error } = await supabase.rpc("create_invitation", {
-        _email: email,
+        _email: email.trim(),
         _role: "employee",
         _company_id: companyId,
       });
@@ -193,7 +209,7 @@ const Users = () => {
         throw error;
       }
 
-      console.log("Invitation created with token:", data);
+      console.log("Invitation created successfully:", data);
       return data;
     },
     onSuccess: () => {
@@ -202,8 +218,8 @@ const Users = () => {
       setInviteDialogOpen(false);
       form.reset();
     },
-    onError: (error) => {
-      console.error("Invitation error:", error);
+    onError: (error: any) => {
+      console.error("Invitation failed:", error);
       toast.error("Failed to send invitation: " + error.message);
     },
   });
@@ -225,8 +241,10 @@ const Users = () => {
     switch (role) {
       case "admin":
         return "default";
-      default:
+      case "employee":
         return "secondary";
+      default:
+        return "outline";
     }
   };
 
@@ -240,12 +258,13 @@ const Users = () => {
   };
 
   // Debug logging
-  console.log("Users page debug:", {
+  console.log("Users page state:", {
     companyId,
     companyName: company?.name,
     usersCount: users.length,
     isLoading,
     error: usersError?.message,
+    searchTerm,
   });
 
   if (!companyId) {
@@ -315,9 +334,14 @@ const Users = () => {
                   />
                   <div className="flex gap-2">
                     <Button type="submit" disabled={inviteMutation.isPending}>
-                      {inviteMutation.isPending
-                        ? "Sending..."
-                        : "Send Invitation"}
+                      {inviteMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        "Send Invitation"
+                      )}
                     </Button>
                     <Button
                       type="button"
@@ -341,7 +365,7 @@ const Users = () => {
                 <summary className="text-sm font-medium cursor-pointer">
                   Debug Info
                 </summary>
-                <pre className="text-xs mt-2 overflow-auto">
+                <pre className="text-xs mt-2 overflow-auto max-h-32">
                   {JSON.stringify(
                     {
                       companyId,
@@ -350,6 +374,7 @@ const Users = () => {
                       isLoading,
                       error: usersError?.message,
                       searchTerm,
+                      sampleUser: users[0] || null,
                     },
                     null,
                     2
@@ -365,7 +390,13 @@ const Users = () => {
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Error loading users: {usersError.message}
+              <div>
+                <strong>Error loading users:</strong> {usersError.message}
+              </div>
+              <div className="mt-2 text-xs">
+                This might be due to missing database relationships or
+                permissions. Check the debug info above and your Supabase logs.
+              </div>
             </AlertDescription>
           </Alert>
         )}
@@ -377,11 +408,11 @@ const Users = () => {
               <Search className="h-5 w-5" />
               Search Users
             </CardTitle>
-            <CardDescription>Search by display name</CardDescription>
+            <CardDescription>Search by display name or user ID</CardDescription>
           </CardHeader>
           <CardContent>
             <Input
-              placeholder="Enter display name..."
+              placeholder="Enter display name or user ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-md"
@@ -399,19 +430,57 @@ const Users = () => {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Loading users...
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                <div className="text-muted-foreground">Loading users...</div>
+              </div>
+            ) : usersError ? (
+              <div className="text-center py-8">
+                <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-500 opacity-50" />
+                <div className="text-red-600 font-medium">
+                  Failed to load users
+                </div>
+                <div className="text-sm text-muted-foreground mt-2">
+                  Check your database setup and permissions
+                </div>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: ["company-users"],
+                    })
+                  }
+                >
+                  Retry
+                </Button>
               </div>
             ) : users.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {searchTerm ? "No users match your search" : "No users found"}
-                {!searchTerm && (
-                  <div className="mt-4">
+                {searchTerm ? (
+                  <>
+                    <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <div>No users match your search</div>
+                    <Button
+                      variant="outline"
+                      className="mt-4"
+                      onClick={() => setSearchTerm("")}
+                    >
+                      Clear Search
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <div className="mb-2">No users in your company yet</div>
+                    <div className="text-sm mb-4">
+                      Start by inviting your first employee
+                    </div>
                     <Button onClick={() => setInviteDialogOpen(true)}>
                       <UserPlus className="h-4 w-4 mr-2" />
                       Invite First User
                     </Button>
-                  </div>
+                  </>
                 )}
               </div>
             ) : (
@@ -450,10 +519,20 @@ const Users = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {new Date(user.created_at).toLocaleDateString()}
+                        <div className="text-sm">
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </div>
+                        {user.profile_created_at && (
+                          <div className="text-xs text-muted-foreground">
+                            Profile:{" "}
+                            {new Date(
+                              user.profile_created_at
+                            ).toLocaleDateString()}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
-                        {user.role !== "admin" && (
+                        {user.role !== "admin" ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -466,6 +545,10 @@ const Users = () => {
                             <UserPlus className="h-4 w-4" />
                             Promote to Admin
                           </Button>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">
+                            Admin
+                          </Badge>
                         )}
                       </TableCell>
                     </TableRow>
@@ -502,9 +585,14 @@ const Users = () => {
                   onClick={handleUpdateRole}
                   disabled={updateRoleMutation.isPending}
                 >
-                  {updateRoleMutation.isPending
-                    ? "Promoting..."
-                    : "Confirm Promotion"}
+                  {updateRoleMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Promoting...
+                    </>
+                  ) : (
+                    "Confirm Promotion"
+                  )}
                 </Button>
                 <Button variant="outline" onClick={() => setSelectedUser(null)}>
                   Cancel
@@ -534,7 +622,8 @@ const Users = () => {
                     • New users must accept invitation emails to join the
                     company
                   </p>
-                  <p>• Only company admins can manage other users</p>
+                  <p>• Only company admins can promote users to admin role</p>
+                  <p>• Users without profiles will show "No name set"</p>
                 </div>
               </div>
             </div>
