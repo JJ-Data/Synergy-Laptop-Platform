@@ -1,4 +1,4 @@
-// File: src/pages/company/Requests.tsx
+// src/pages/company/Requests.tsx - Fixed version
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
-// Enhanced request type with relations
+// Enhanced request type with relations - FIXED foreign key relationships
 type RequestWithDetails = {
   id: string;
   status: string;
@@ -62,7 +62,8 @@ type RequestWithDetails = {
   decided_at?: string;
   employee_id: string;
   laptop_id: string;
-  laptops: {
+  // Fixed: Use proper nested selection
+  laptop?: {
     name: string;
     brand: string;
     price_cents: number;
@@ -71,7 +72,7 @@ type RequestWithDetails = {
     ram_gb?: number;
     storage_gb?: number;
   };
-  profiles: {
+  employee_profile?: {
     display_name?: string;
     avatar_url?: string;
   };
@@ -159,28 +160,99 @@ const Requests = () => {
     enabled: !!companyId,
   });
 
-  // Fetch all company requests with employee and laptop details
-  const { data: requests = [], isLoading } = useQuery({
+  // FIXED: Simplified query with better error handling
+  const {
+    data: requests = [],
+    isLoading,
+    error: requestsError,
+  } = useQuery({
     queryKey: ["company-requests", companyId],
     queryFn: async () => {
       if (!companyId) return [];
 
-      const { data, error } = await supabase
+      console.log("Fetching requests for company:", companyId);
+
+      // First get basic requests
+      const { data: requestsData, error: requestsError } = await supabase
         .from("requests")
-        .select(
-          `
-          *,
-          laptops(name, brand, price_cents, image_url, cpu, ram_gb, storage_gb),
-          profiles!requests_employee_id_fkey(display_name, avatar_url)
-        `
-        )
+        .select("*")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      return data as RequestWithDetails[];
+      if (requestsError) {
+        console.error("Error fetching requests:", requestsError);
+        throw requestsError;
+      }
+
+      console.log("Found requests:", requestsData?.length || 0);
+
+      if (!requestsData || requestsData.length === 0) {
+        return [];
+      }
+
+      // Get laptop details for each request
+      const laptopIds = [...new Set(requestsData.map((r) => r.laptop_id))];
+      const { data: laptopsData, error: laptopsError } = await supabase
+        .from("laptops")
+        .select(
+          "id, name, brand, price_cents, image_url, cpu, ram_gb, storage_gb"
+        )
+        .in("id", laptopIds);
+
+      if (laptopsError) {
+        console.error("Error fetching laptops:", laptopsError);
+        // Don't throw - we can still show requests without laptop details
+      }
+
+      // Get employee profiles for each request
+      const employeeIds = [...new Set(requestsData.map((r) => r.employee_id))];
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", employeeIds);
+
+      if (profilesError) {
+        console.error("Error fetching profiles:", profilesError);
+        // Don't throw - we can still show requests without profile details
+      }
+
+      // Combine the data
+      const enrichedRequests: RequestWithDetails[] = requestsData.map(
+        (request) => {
+          const laptop = laptopsData?.find((l) => l.id === request.laptop_id);
+          const profile = profilesData?.find(
+            (p) => p.id === request.employee_id
+          );
+
+          return {
+            ...request,
+            laptop: laptop
+              ? {
+                  name: laptop.name,
+                  brand: laptop.brand || "",
+                  price_cents: laptop.price_cents,
+                  image_url: laptop.image_url || undefined,
+                  cpu: laptop.cpu || undefined,
+                  ram_gb: laptop.ram_gb || undefined,
+                  storage_gb: laptop.storage_gb || undefined,
+                }
+              : undefined,
+            employee_profile: profile
+              ? {
+                  display_name: profile.display_name || undefined,
+                  avatar_url: profile.avatar_url || undefined,
+                }
+              : undefined,
+          };
+        }
+      );
+
+      console.log("Enriched requests:", enrichedRequests.length);
+      return enrichedRequests;
     },
     enabled: !!companyId,
+    retry: 3,
+    retryDelay: 1000,
   });
 
   // Update request status mutation with loan creation
@@ -271,6 +343,7 @@ const Requests = () => {
       setActionRequest(null);
     },
     onError: (error) => {
+      console.error("Update request error:", error);
       toast.error("Failed to update request: " + error.message);
     },
   });
@@ -311,6 +384,16 @@ const Requests = () => {
 
   const interestRate = policy?.interest_rate ?? 0;
 
+  // Debug logging
+  console.log("Requests page debug:", {
+    companyId,
+    company: company?.name,
+    requestsCount: requests.length,
+    isLoading,
+    error: requestsError,
+    stats,
+  });
+
   if (!companyId) {
     return (
       <AppLayout title="Requests">
@@ -341,6 +424,48 @@ const Requests = () => {
             </p>
           </div>
         </div>
+
+        {/* Debug info for troubleshooting */}
+        {process.env.NODE_ENV === "development" && (
+          <Card className="border-dashed border-yellow-200 bg-yellow-50">
+            <CardContent className="p-4">
+              <details>
+                <summary className="text-sm font-medium cursor-pointer">
+                  Debug Info
+                </summary>
+                <pre className="text-xs mt-2 overflow-auto">
+                  {JSON.stringify(
+                    {
+                      companyId,
+                      companyName: company?.name,
+                      requestsCount: requests.length,
+                      isLoading,
+                      error: requestsError?.message,
+                      stats,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </details>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error display */}
+        {requestsError && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-red-800">
+                <AlertTriangle className="h-5 w-5" />
+                <div>
+                  <h3 className="font-semibold">Error Loading Requests</h3>
+                  <p className="text-sm">{requestsError.message}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -409,6 +534,17 @@ const Requests = () => {
                   <div className="text-center py-8 text-muted-foreground">
                     No {activeTab === "all" ? "" : activeTab + " "}requests
                     found
+                    {requests.length === 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm">
+                          No requests have been submitted yet.
+                        </p>
+                        <p className="text-xs mt-1">
+                          Requests will appear here once employees submit
+                          financing applications.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -433,7 +569,8 @@ const Requests = () => {
                                 <Avatar className="h-12 w-12">
                                   <AvatarImage
                                     src={
-                                      request.profiles?.avatar_url || undefined
+                                      request.employee_profile?.avatar_url ||
+                                      undefined
                                     }
                                   />
                                   <AvatarFallback>
@@ -442,7 +579,7 @@ const Requests = () => {
                                 </Avatar>
                                 <div>
                                   <div className="font-medium">
-                                    {request.profiles?.display_name ||
+                                    {request.employee_profile?.display_name ||
                                       "Unknown Employee"}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
@@ -461,17 +598,17 @@ const Requests = () => {
                                   <div className="w-16 h-16 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
                                     <img
                                       src={
-                                        request.laptops.image_url ||
+                                        request.laptop?.image_url ||
                                         "/placeholder.svg"
                                       }
-                                      alt={request.laptops.name}
+                                      alt={request.laptop?.name || "Laptop"}
                                       className="w-full h-full object-cover"
                                     />
                                   </div>
                                   <div className="min-w-0">
                                     <div className="font-medium truncate">
-                                      {request.laptops.brand}{" "}
-                                      {request.laptops.name}
+                                      {request.laptop?.brand}{" "}
+                                      {request.laptop?.name || "Unknown Laptop"}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
                                       ₦
@@ -582,7 +719,10 @@ const Requests = () => {
                 <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                   <Avatar className="h-12 w-12">
                     <AvatarImage
-                      src={selectedRequest.profiles?.avatar_url || undefined}
+                      src={
+                        selectedRequest.employee_profile?.avatar_url ||
+                        undefined
+                      }
                     />
                     <AvatarFallback>
                       <User className="h-6 w-6" />
@@ -590,7 +730,7 @@ const Requests = () => {
                   </Avatar>
                   <div>
                     <div className="font-medium">
-                      {selectedRequest.profiles?.display_name ||
+                      {selectedRequest.employee_profile?.display_name ||
                         "Unknown Employee"}
                     </div>
                     <div className="text-sm text-muted-foreground">
@@ -607,34 +747,36 @@ const Requests = () => {
                   <div className="w-20 h-20 bg-background rounded-lg overflow-hidden flex-shrink-0">
                     <img
                       src={
-                        selectedRequest.laptops.image_url || "/placeholder.svg"
+                        selectedRequest.laptop?.image_url || "/placeholder.svg"
                       }
-                      alt={selectedRequest.laptops.name}
+                      alt={selectedRequest.laptop?.name || "Laptop"}
                       className="w-full h-full object-cover"
                     />
                   </div>
                   <div className="flex-1">
                     <div className="font-medium">
-                      {selectedRequest.laptops.brand}{" "}
-                      {selectedRequest.laptops.name}
+                      {selectedRequest.laptop?.brand}{" "}
+                      {selectedRequest.laptop?.name || "Unknown Laptop"}
                     </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {[
-                        selectedRequest.laptops.cpu,
-                        selectedRequest.laptops.ram_gb
-                          ? `${selectedRequest.laptops.ram_gb}GB RAM`
-                          : null,
-                        selectedRequest.laptops.storage_gb
-                          ? `${selectedRequest.laptops.storage_gb}GB Storage`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </div>
+                    {selectedRequest.laptop && (
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {[
+                          selectedRequest.laptop.cpu,
+                          selectedRequest.laptop.ram_gb
+                            ? `${selectedRequest.laptop.ram_gb}GB RAM`
+                            : null,
+                          selectedRequest.laptop.storage_gb
+                            ? `${selectedRequest.laptop.storage_gb}GB Storage`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" • ")}
+                      </div>
+                    )}
                     <div className="text-lg font-semibold mt-2">
                       ₦
                       {Math.round(
-                        selectedRequest.laptops.price_cents / 100
+                        selectedRequest.requested_amount_cents / 100
                       ).toLocaleString()}
                     </div>
                   </div>

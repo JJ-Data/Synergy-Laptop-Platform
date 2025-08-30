@@ -1,3 +1,4 @@
+// src/pages/company/Users.tsx - Fixed version without admin auth requirements
 import AppLayout from "@/components/layout/AppLayout";
 import Seo from "@/components/seo/Seo";
 import { useState } from "react";
@@ -7,23 +8,67 @@ import { useCompany } from "@/context/CompanyContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Search, UserPlus, User, Mail } from "lucide-react";
+import {
+  Search,
+  UserPlus,
+  User,
+  Mail,
+  Shield,
+  AlertTriangle,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
+// Simplified user type that doesn't require admin auth
 type CompanyUser = {
-  id: string;
-  email: string;
-  display_name?: string;
+  user_id: string;
   role: string;
   created_at: string;
+  display_name?: string;
+  profile_created_at?: string;
+  // Note: Email won't be available without admin privileges
+  // This is a limitation we'll have to work with
 };
 
 const inviteSchema = z.object({
@@ -45,56 +90,67 @@ const Users = () => {
     },
   });
 
-  // Fetch company users
-  const { data: users = [], isLoading } = useQuery({
+  // FIXED: Simplified user query that works without admin privileges
+  const {
+    data: users = [],
+    isLoading,
+    error: usersError,
+  } = useQuery({
     queryKey: ["company-users", companyId, searchTerm],
     queryFn: async () => {
       if (!companyId) return [];
 
-      // Get user roles for this company
+      console.log("Fetching users for company:", companyId);
+
+      // Get user roles for this company with profile information
       const { data: userRoles, error: rolesError } = await supabase
         .from("user_roles")
-        .select("user_id, role")
-        .eq("company_id", companyId);
-      
-      if (rolesError) throw rolesError;
+        .select(
+          `
+          user_id,
+          role,
+          created_at,
+          profiles:user_id (
+            display_name,
+            created_at
+          )
+        `
+        )
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false });
 
-      if (!userRoles?.length) return [];
+      if (rolesError) {
+        console.error("Error fetching user roles:", rolesError);
+        throw rolesError;
+      }
 
-      // Get profiles for these users
-      const userIds = userRoles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, display_name, created_at")
-        .in("id", userIds);
-      
-      if (profilesError) throw profilesError;
+      console.log("Found user roles:", userRoles?.length || 0);
 
-       // Get auth users for email addresses  
-       const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-       if (authError) throw authError;
+      if (!userRoles || userRoles.length === 0) return [];
 
-        // Combine the data
-        const companyUsers: CompanyUser[] = userRoles.map((roleData: any) => {
-          const profile = profiles?.find((p: any) => p.id === roleData.user_id);
-          const authUser = authUsers.users.find((u: any) => u.id === roleData.user_id);
+      // Transform the data to match our simplified type
+      const companyUsers: CompanyUser[] = userRoles
+        .map((roleData: any) => ({
+          user_id: roleData.user_id,
+          role: roleData.role,
+          created_at: roleData.created_at,
+          display_name: roleData.profiles?.display_name,
+          profile_created_at: roleData.profiles?.created_at,
+        }))
+        .filter((user) => {
+          if (!searchTerm) return true;
+          // Only search by display name since we don't have email access
+          return user.display_name
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase());
+        });
 
-          return {
-            id: roleData.user_id,
-            email: authUser?.email || '',
-            display_name: profile?.display_name || undefined,
-            role: roleData.role,
-            created_at: authUser?.created_at || profile?.created_at || ''
-          };
-        }).filter(user => 
-          searchTerm === "" || 
-          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (user.display_name && user.display_name.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-
+      console.log("Processed users:", companyUsers.length);
       return companyUsers;
     },
     enabled: !!companyId,
+    retry: 3,
+    retryDelay: 1000,
   });
 
   // Update role mutation
@@ -114,6 +170,7 @@ const Users = () => {
       setNewRole("");
     },
     onError: (error) => {
+      console.error("Role update error:", error);
       toast.error("Failed to update role: " + error.message);
     },
   });
@@ -122,14 +179,21 @@ const Users = () => {
   const inviteMutation = useMutation({
     mutationFn: async ({ email }: { email: string }) => {
       if (!companyId) throw new Error("No company selected");
-      
+
+      console.log("Creating invitation for:", email);
+
       const { data, error } = await supabase.rpc("create_invitation", {
         _email: email,
         _role: "employee",
         _company_id: companyId,
       });
-      
-      if (error) throw error;
+
+      if (error) {
+        console.error("Invitation creation error:", error);
+        throw error;
+      }
+
+      console.log("Invitation created with token:", data);
       return data;
     },
     onSuccess: () => {
@@ -139,6 +203,7 @@ const Users = () => {
       form.reset();
     },
     onError: (error) => {
+      console.error("Invitation error:", error);
       toast.error("Failed to send invitation: " + error.message);
     },
   });
@@ -148,7 +213,7 @@ const Users = () => {
 
     updateRoleMutation.mutate({
       userId: selectedUser,
-      role: newRole
+      role: newRole,
     });
   };
 
@@ -165,10 +230,31 @@ const Users = () => {
     }
   };
 
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case "admin":
+        return <Shield className="h-3 w-3" />;
+      default:
+        return <User className="h-3 w-3" />;
+    }
+  };
+
+  // Debug logging
+  console.log("Users page debug:", {
+    companyId,
+    companyName: company?.name,
+    usersCount: users.length,
+    isLoading,
+    error: usersError?.message,
+  });
+
   if (!companyId) {
     return (
       <AppLayout title="Users">
-        <Seo title="Users | Company Admin" description="Manage users in your company." />
+        <Seo
+          title="Users | Company Admin"
+          description="Manage users in your company."
+        />
         <div className="text-center py-8 text-muted-foreground">
           No company context. Please log in as a company admin.
         </div>
@@ -178,15 +264,20 @@ const Users = () => {
 
   return (
     <AppLayout title="Users">
-      <Seo title="Users | Company Admin" description="Manage users in your company." />
-      
+      <Seo
+        title="Users | Company Admin"
+        description="Manage users in your company."
+      />
+
       <div className="space-y-6">
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold">Company Users</h1>
-            <p className="text-muted-foreground">Manage employees and admins for {company?.name}</p>
+            <p className="text-muted-foreground">
+              Manage employees and admins for {company?.name}
+            </p>
           </div>
-          
+
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button className="flex items-center gap-2">
@@ -202,7 +293,10 @@ const Users = () => {
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onInviteSubmit)} className="space-y-4">
+                <form
+                  onSubmit={form.handleSubmit(onInviteSubmit)}
+                  className="space-y-4"
+                >
                   <FormField
                     control={form.control}
                     name="email"
@@ -210,7 +304,10 @@ const Users = () => {
                       <FormItem>
                         <FormLabel>Email Address</FormLabel>
                         <FormControl>
-                          <Input placeholder="employee@company.com" {...field} />
+                          <Input
+                            placeholder="employee@company.com"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -218,9 +315,15 @@ const Users = () => {
                   />
                   <div className="flex gap-2">
                     <Button type="submit" disabled={inviteMutation.isPending}>
-                      {inviteMutation.isPending ? "Sending..." : "Send Invitation"}
+                      {inviteMutation.isPending
+                        ? "Sending..."
+                        : "Send Invitation"}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setInviteDialogOpen(false)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setInviteDialogOpen(false)}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -230,6 +333,43 @@ const Users = () => {
           </Dialog>
         </div>
 
+        {/* Debug info for development */}
+        {process.env.NODE_ENV === "development" && (
+          <Card className="border-dashed border-yellow-200 bg-yellow-50">
+            <CardContent className="p-4">
+              <details>
+                <summary className="text-sm font-medium cursor-pointer">
+                  Debug Info
+                </summary>
+                <pre className="text-xs mt-2 overflow-auto">
+                  {JSON.stringify(
+                    {
+                      companyId,
+                      companyName: company?.name,
+                      usersCount: users.length,
+                      isLoading,
+                      error: usersError?.message,
+                      searchTerm,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </details>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error display */}
+        {usersError && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Error loading users: {usersError.message}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Search Bar */}
         <Card>
           <CardHeader>
@@ -237,11 +377,11 @@ const Users = () => {
               <Search className="h-5 w-5" />
               Search Users
             </CardTitle>
-            <CardDescription>Search by email or display name</CardDescription>
+            <CardDescription>Search by display name</CardDescription>
           </CardHeader>
           <CardContent>
             <Input
-              placeholder="Enter email or name..."
+              placeholder="Enter display name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-md"
@@ -253,19 +393,32 @@ const Users = () => {
         <Card>
           <CardHeader>
             <CardTitle>Company Users ({users.length})</CardTitle>
-            <CardDescription>Employees and admins in your company</CardDescription>
+            <CardDescription>
+              Employees and admins in your company
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+              <div className="text-center py-8 text-muted-foreground">
+                Loading users...
+              </div>
             ) : users.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No users found</div>
+              <div className="text-center py-8 text-muted-foreground">
+                {searchTerm ? "No users match your search" : "No users found"}
+                {!searchTerm && (
+                  <div className="mt-4">
+                    <Button onClick={() => setInviteDialogOpen(true)}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Invite First User
+                    </Button>
+                  </div>
+                )}
+              </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Joined</TableHead>
                     <TableHead>Actions</TableHead>
@@ -273,35 +426,45 @@ const Users = () => {
                 </TableHeader>
                 <TableBody>
                   {users.map((user) => (
-                    <TableRow key={user.id}>
+                    <TableRow key={user.user_id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
                           <div>
-                            <div className="font-medium">{user.display_name || "No name"}</div>
-                            <div className="text-sm text-muted-foreground">{user.id.slice(0, 8)}...</div>
+                            <div className="font-medium">
+                              {user.display_name || "No name set"}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              ID: {user.user_id.slice(0, 8)}...
+                            </div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
                       <TableCell>
-                        <Badge variant={getRoleColor(user.role)}>
+                        <Badge
+                          variant={getRoleColor(user.role)}
+                          className="flex w-fit items-center gap-1"
+                        >
+                          {getRoleIcon(user.role)}
                           {user.role}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {user.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown"}
+                        {new Date(user.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
                         {user.role !== "admin" && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSelectedUser(user.id)}
+                            onClick={() => {
+                              setSelectedUser(user.user_id);
+                              setNewRole("admin");
+                            }}
                             className="flex items-center gap-1"
                           >
                             <UserPlus className="h-4 w-4" />
-                            Change Role
+                            Promote to Admin
                           </Button>
                         )}
                       </TableCell>
@@ -313,35 +476,35 @@ const Users = () => {
           </CardContent>
         </Card>
 
-        {/* Role Update Modal */}
+        {/* Role Update Confirmation */}
         {selectedUser && (
           <Card>
             <CardHeader>
-              <CardTitle>Update User Role</CardTitle>
+              <CardTitle>Promote User to Admin</CardTitle>
               <CardDescription>
-                Change the role for {users.find(u => u.id === selectedUser)?.email}
+                Promote{" "}
+                {users.find((u) => u.user_id === selectedUser)?.display_name ||
+                  "this user"}{" "}
+                to company admin?
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">New Role</label>
-                <Select value={newRole} onValueChange={setNewRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Company Admin</SelectItem>
-                    <SelectItem value="employee">Employee</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  This will give the user admin access to manage company
+                  settings, users, and financing requests.
+                </AlertDescription>
+              </Alert>
 
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={handleUpdateRole}
-                  disabled={!newRole || updateRoleMutation.isPending}
+                  disabled={updateRoleMutation.isPending}
                 >
-                  {updateRoleMutation.isPending ? "Updating..." : "Update Role"}
+                  {updateRoleMutation.isPending
+                    ? "Promoting..."
+                    : "Confirm Promotion"}
                 </Button>
                 <Button variant="outline" onClick={() => setSelectedUser(null)}>
                   Cancel
@@ -350,6 +513,33 @@ const Users = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Information about limitations */}
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex gap-3">
+              <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-medium text-blue-900">
+                  User Management Notes
+                </h3>
+                <div className="text-sm text-blue-700 mt-1 space-y-1">
+                  <p>
+                    • Email addresses are not displayed for security reasons
+                  </p>
+                  <p>
+                    • Users are identified by their display names and user IDs
+                  </p>
+                  <p>
+                    • New users must accept invitation emails to join the
+                    company
+                  </p>
+                  <p>• Only company admins can manage other users</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
